@@ -1787,6 +1787,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   }
 
   function updateSparks(dt) {
+    let count = 0;
     for (let s = 0; s < MAX_SPARKS; s++) {
       const sp = sparks[s];
       if (sp.life > 0) {
@@ -1809,12 +1810,14 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         dummy.rotation.set(pitchSp, yawSp, 0, 'YXZ');
         dummy.scale.set(tLife, tLife, Math.max(0.4, Math.min(2.2, spdXZ * 0.16)) * tLife);
         dummy.updateMatrix();
-        sparkInst.setMatrixAt(s, dummy.matrix);
-      } else {
-        sparkInst.setMatrixAt(s, zero);
+        sparkInst.setMatrixAt(count++, dummy.matrix);
       }
     }
-    sparkInst.instanceMatrix.needsUpdate = true;
+    // Keep one degenerate instance for shader warm-up, then hide the empty pool and stop uploading it.
+    sparkInst.visible = count > 0 || updates <= 2;
+    if (count === 0 && updates <= 2) sparkInst.setMatrixAt(count++, zero);
+    sparkInst.count = count;
+    if (count > 0) flagRange(sparkInst.instanceMatrix, count);
   }
 
   // =========================================================================

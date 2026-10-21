@@ -436,11 +436,12 @@ function drawWaypoint(ctx, x, y, r) {
 const overlaps = (boxes, b) => boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
 
 class NYCMapSystem {
-  constructor({ controllerManager, cameraSystem, trafficSystem, onTeleport }) {
+  constructor({ controllerManager, cameraSystem, trafficSystem, onTeleport, onToggle }) {
     this.controllerManager = controllerManager;
     this.cameraSystem = cameraSystem;
     this.trafficSystem = trafficSystem;
     this.onTeleport = onTeleport;
+    this.onToggle = onToggle;
 
     this.miniCanvas = document.getElementById('minimap-canvas');
     this.miniCtx = this.miniCanvas ? this.miniCanvas.getContext('2d') : null;
@@ -473,6 +474,7 @@ class NYCMapSystem {
     this.viewCenterZ = 0;
     this.viewZoom = 0.22;
     this.isPanning = false;
+    this.panPointerId = null;
     this.panStart = { x: 0, y: 0, cx: 0, cz: 0 };
     this.dragMoved = false;
 
@@ -557,8 +559,12 @@ class NYCMapSystem {
     });
 
     if (this.fullCanvas) {
+      this.fullCanvas.style.touchAction = 'none';
       this.fullCanvas.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || !this.isFullMapOpen || this.panPointerId !== null) return;
+        e.preventDefault();
+        this.panPointerId = e.pointerId;
+        this.fullCanvas.setPointerCapture(e.pointerId);
         this.isPanning = true;
         this.dragMoved = false;
         this.panStart.x = e.clientX;
@@ -568,13 +574,15 @@ class NYCMapSystem {
         if (this.fullCanvasWrap) this.fullCanvasWrap.classList.add('is-panning');
       });
 
-      window.addEventListener('pointermove', (e) => {
+      this.fullCanvas.addEventListener('pointermove', (e) => {
         if (!this.isFullMapOpen || !this.fullCanvas) return;
+        if (this.isPanning ? e.pointerId !== this.panPointerId : e.pointerType !== 'mouse') return;
         const rect = this.fullCanvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
 
         if (this.isPanning) {
+          e.preventDefault();
           const dx = e.clientX - this.panStart.x;
           const dy = e.clientY - this.panStart.y;
           if (Math.hypot(dx, dy) > 5) this.dragMoved = true;
@@ -593,11 +601,11 @@ class NYCMapSystem {
         }
       });
 
-      window.addEventListener('pointerup', (e) => {
-        if (!this.isPanning) return;
-        this.isPanning = false;
-        if (this.fullCanvasWrap) this.fullCanvasWrap.classList.remove('is-panning');
-        if (!this.dragMoved && this.isFullMapOpen && this.fullCanvas) {
+      this.fullCanvas.addEventListener('pointerup', (e) => {
+        if (e.pointerId !== this.panPointerId) return;
+        const clicked = !this.dragMoved && Math.hypot(e.clientX - this.panStart.x, e.clientY - this.panStart.y) <= 5;
+        this.cancelPan();
+        if (clicked && this.isFullMapOpen && this.fullCanvas) {
           const rect = this.fullCanvas.getBoundingClientRect();
           const mx = e.clientX - rect.left;
           const my = e.clientY - rect.top;
@@ -614,6 +622,15 @@ class NYCMapSystem {
             this.renderFullMap();
           }
         }
+      });
+      for (const type of ['pointercancel', 'lostpointercapture']) {
+        this.fullCanvas.addEventListener(type, (e) => {
+          if (e.pointerId === this.panPointerId) this.cancelPan();
+        });
+      }
+      window.addEventListener('blur', () => this.cancelPan());
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.cancelPan();
       });
 
       // Wheel zoom about the cursor (the place under it stays put)
@@ -671,8 +688,18 @@ class NYCMapSystem {
     this.renderFullMap();
   }
 
+  cancelPan() {
+    const id = this.panPointerId;
+    this.panPointerId = null;
+    this.isPanning = false;
+    if (this.fullCanvasWrap) this.fullCanvasWrap.classList.remove('is-panning');
+    if (id !== null && this.fullCanvas && this.fullCanvas.hasPointerCapture(id)) this.fullCanvas.releasePointerCapture(id);
+  }
+
   toggleFullMap(open) {
     this.isFullMapOpen = Boolean(open);
+    if (!this.isFullMapOpen) this.cancelPan();
+    if (this.onToggle) this.onToggle(this.isFullMapOpen);
     if (!this.modal) return;
     this.modal.classList.toggle('hidden', !this.isFullMapOpen);
     if (this.isFullMapOpen) {

@@ -139,27 +139,43 @@ class ThirdPersonControllerManager {
       boost: ['ShiftLeft', 'ShiftRight']
     };
     const actionsByCode = new Map(Object.entries(bindings).flatMap(([action, codes]) => codes.map((code) => [code, action])));
-    const pressedCodes = new Set();
+    this._pressedCodes = new Set();
+    this._keyboardKeys = {};
+    this._touchKeys = {};
 
     const onKey = (e, isDown) => {
       const action = actionsByCode.get(e.code);
       if (!action || (isDown && isTypingInField(e))) return;
-      if (isDown) pressedCodes.add(e.code);
-      else pressedCodes.delete(e.code);
+      if (isDown) this._pressedCodes.add(e.code);
+      else this._pressedCodes.delete(e.code);
       // Releasing one binding must not cancel another key held for the same action.
-      this.keys[action] = bindings[action].some((code) => pressedCodes.has(code));
-    };
-    const resetKeys = () => {
-      pressedCodes.clear();
-      for (const action of Object.keys(bindings)) this.keys[action] = false;
+      this._keyboardKeys[action] = bindings[action].some((code) => this._pressedCodes.has(code));
+      this.keys[action] = this._keyboardKeys[action] || this._touchKeys[action] || false;
     };
 
     window.addEventListener('keydown', (e) => onKey(e, true));
     window.addEventListener('keyup', (e) => onKey(e, false));
-    window.addEventListener('blur', resetKeys);
+    window.addEventListener('blur', () => this.resetInput());
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) resetKeys();
+      if (document.hidden) this.resetInput();
     });
+  }
+
+  setTouchInput(action, value) {
+    if (!Object.hasOwn(this.keys, action)) return;
+    this._touchKeys[action] = typeof value === 'boolean' ? value : Math.max(0, Math.min(1, Number(value) || 0));
+    this.keys[action] = this._keyboardKeys[action] || this._touchKeys[action] || false;
+  }
+
+  clearTouchInput() {
+    this._touchKeys = {};
+    for (const action of Object.keys(this.keys)) this.keys[action] = this._keyboardKeys[action] || false;
+  }
+
+  resetInput() {
+    this._pressedCodes.clear();
+    this._keyboardKeys = {};
+    this.clearTouchInput();
   }
 
   setMode(mode) {
@@ -864,11 +880,11 @@ class ThirdPersonControllerManager {
     const turnRate = 2.6;
 
     let targetSpeed = 0;
-    if (this.keys.forward) targetSpeed = maxWalk;
-    else if (this.keys.backward) targetSpeed = -maxWalk * 0.65;
+    if (this.keys.forward) targetSpeed = maxWalk * this.keys.forward;
+    else if (this.keys.backward) targetSpeed = -maxWalk * 0.65 * this.keys.backward;
 
-    if (this.keys.left) p.heading += turnRate * dt;
-    if (this.keys.right) p.heading -= turnRate * dt;
+    if (this.keys.left) p.heading += turnRate * dt * this.keys.left;
+    if (this.keys.right) p.heading -= turnRate * dt * this.keys.right;
 
     p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 10);
 
@@ -894,8 +910,8 @@ class ThirdPersonControllerManager {
     const accel = this.keys.boost ? 21.0 : 14.0;
 
     let throttle = 0;
-    if (this.keys.forward) throttle = 1;
-    else if (this.keys.backward) throttle = -1;
+    if (this.keys.forward) throttle = this.keys.forward;
+    else if (this.keys.backward) throttle = -this.keys.backward;
 
     if (throttle !== 0) {
       c.speed += throttle * accel * dt;
@@ -906,8 +922,8 @@ class ThirdPersonControllerManager {
     }
 
     let steerInput = 0;
-    if (this.keys.left) steerInput = 1;
-    if (this.keys.right) steerInput = -1;
+    if (this.keys.left) steerInput = this.keys.left;
+    if (this.keys.right) steerInput = -this.keys.right;
 
     c.steerAngle += (steerInput * 0.52 - c.steerAngle) * Math.min(1, dt * 10);
 
@@ -968,8 +984,8 @@ class ThirdPersonControllerManager {
     const accel = this.keys.boost ? 13.5 : 9.0;
 
     let throttle = 0;
-    if (this.keys.forward) throttle = 1;
-    else if (this.keys.backward) throttle = -0.6;
+    if (this.keys.forward) throttle = this.keys.forward;
+    else if (this.keys.backward) throttle = -0.6 * this.keys.backward;
 
     if (throttle !== 0) {
       b.speed += throttle * accel * dt;
@@ -980,8 +996,8 @@ class ThirdPersonControllerManager {
     }
 
     let turnInput = 0;
-    if (this.keys.left) turnInput = 1;
-    if (this.keys.right) turnInput = -1;
+    if (this.keys.left) turnInput = this.keys.left;
+    if (this.keys.right) turnInput = -this.keys.right;
 
     if (Math.abs(b.speed) > 0.15) {
       const dirSign = b.speed >= 0 ? 1 : -1;
@@ -1014,16 +1030,16 @@ class ThirdPersonControllerManager {
     const maxVertSpeed = 16.0;
 
     let fwdInput = 0;
-    if (this.keys.forward) fwdInput = 1;
-    else if (this.keys.backward) fwdInput = -1;
+    if (this.keys.forward) fwdInput = this.keys.forward;
+    else if (this.keys.backward) fwdInput = -this.keys.backward;
 
     let yawInput = 0;
-    if (this.keys.left) yawInput = 1;
-    if (this.keys.right) yawInput = -1;
+    if (this.keys.left) yawInput = this.keys.left;
+    if (this.keys.right) yawInput = -this.keys.right;
 
     let vertInput = 0;
-    if (this.keys.up) vertInput = 1;
-    else if (this.keys.down) vertInput = -1;
+    if (this.keys.up) vertInput = this.keys.up;
+    else if (this.keys.down) vertInput = -this.keys.down;
 
     if (fwdInput !== 0) {
       h.speed += fwdInput * 24.0 * dt;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Slop New York</title>
   <link rel="icon" href="data:," />
   <meta name="description" content="Photorealistic GTA-style 3D Slop New York simulation built with Three.js WebGPURenderer and TSL shaders featuring complete Manhattan street map (125th St to Battery Park), third-person navigation (Person, Car, Cyclist, Helicopter), and 11 cinematic cameras at 60 FPS." />
@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&amp;family=Overpass:wght@600;700&amp;display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261020" />
+  <link rel="stylesheet" href="./css/style.css?v=20261021-touch" />
   <!-- three.js dev branch (builds committed to mrdoob/three.js@dev, served by jsDelivr) -->
   <script type="importmap">
     {
@@ -176,6 +176,29 @@
     </section>
   </div>
 
+  <!-- Touch input stays available in clean view; the map temporarily suspends it. -->
+  <section id="touch-controls" aria-label="Touch controls" hidden>
+    <div class="touch-movement">
+      <div id="touch-stick" role="group" aria-label="Movement joystick: drag up or down to move, left or right to turn">
+        <span class="touch-stick-axis" aria-hidden="true"></span>
+        <span id="touch-stick-knob" aria-hidden="true"></span>
+      </div>
+      <span class="touch-caption">Move &amp; steer</span>
+    </div>
+    <p class="touch-look-hint">Drag to look · Pinch to zoom</p>
+    <div class="touch-actions" role="group" aria-label="Hold to perform an action">
+      <button class="touch-action" data-touch-action="up" type="button" aria-label="Jump" aria-pressed="false" hidden>
+        <span aria-hidden="true">↑</span><span data-touch-label="up">Jump</span>
+      </button>
+      <button class="touch-action" data-touch-action="down" type="button" aria-label="Descend" aria-pressed="false" hidden>
+        <span aria-hidden="true">↓</span><span data-touch-label="down">Descend</span>
+      </button>
+      <button class="touch-action touch-boost" data-touch-action="boost" type="button" aria-label="Boost" aria-pressed="false">
+        <span aria-hidden="true">↟</span><span data-touch-label="boost">Boost</span>
+      </button>
+    </div>
+  </section>
+
   <!-- All Cameras: 3 Follow Cameras + 7 Iconic NYC Vantage Cameras + Auto-Director Drone -->
   <div id="camera-popover" class="popover" popover data-side="above" data-anchor="hud-cluster" data-align="hud-cluster" aria-label="Multiple Camera Angles">
     <div class="pop-title">Follow</div>
@@ -293,13 +316,14 @@
       './js/road-paint.js',
       './js/traffic.js',
       './js/controllers.js',
+      './js/touch-controls.js',
       './js/cameras.js',
       './js/nyc-map.js',
       './js/scene-culling.js',
       './js/main.js'
     ];
 
-    const assetVersion = '20261020t';
+    const assetVersion = '20261021-touch';
     for (const src of scripts) {
       const s = document.createElement('script');
       s.src = `${src}?v=${assetVersion}`;

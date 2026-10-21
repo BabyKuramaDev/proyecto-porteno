@@ -33,6 +33,7 @@ const { buildStreetDetails } = window.NYC;
 const { createTrafficSystem, createHighwayTraffic } = window.NYC;
 const { buildRoadPaint } = window.NYC;
 const { ThirdPersonControllerManager } = window.NYC;
+const { TouchControls } = window.NYC;
 const { CameraSystem, CAMERA_PRESETS } = window.NYC;
 const { LightingSystem } = window.NYC;
 const { NYCMapSystem } = window.NYC;
@@ -120,6 +121,7 @@ async function initApp() {
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
+  const touchControls = new TouchControls(controllerManager);
   markInit('controllers');
 
   // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
@@ -195,6 +197,7 @@ async function initApp() {
   const teleportButtons = document.querySelectorAll('[data-teleport]');
   const hudToggleBtn = document.getElementById('btn-toggle-hud');
   const modeSwitch = document.getElementById('mode-switch');
+  touchControls.onAvailabilityChange = placeModeIndicator;
 
   const elFps = document.getElementById('hud-fps');
   const elMode = document.getElementById('hud-active-mode');
@@ -244,6 +247,7 @@ async function initApp() {
 
   function selectMode(mode) {
     controllerManager.setMode(mode);
+    touchControls.setMode(controllerManager.activeMode);
     modeButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
     });
@@ -303,15 +307,20 @@ async function initApp() {
       const align = document.getElementById(pop.dataset.align) || invoker;
       if (!anchor || !align) return;
       const r = anchor.getBoundingClientRect();
+      const spaceAbove = Math.max(0, r.top - 20);
+      const spaceBelow = Math.max(0, window.innerHeight - r.bottom - 20);
+      let above = pop.dataset.side === 'above';
+      // The camera control moves to the top on touch screens; open toward the available space.
+      if ((above ? spaceAbove : spaceBelow) < 160) above = spaceAbove > spaceBelow;
       pop.style.right = `${Math.max(8, window.innerWidth - align.getBoundingClientRect().right)}px`;
-      if (pop.dataset.side === 'above') {
+      if (above) {
         pop.style.top = 'auto';
         pop.style.bottom = `${window.innerHeight - r.top + 8}px`;
-        pop.style.maxHeight = `${Math.max(160, r.top - 20)}px`;
+        pop.style.maxHeight = `${spaceAbove}px`;
       } else {
         pop.style.bottom = 'auto';
         pop.style.top = `${r.bottom + 8}px`;
-        pop.style.maxHeight = `${Math.max(160, window.innerHeight - r.bottom - 20)}px`;
+        pop.style.maxHeight = `${spaceBelow}px`;
       }
     });
   });
@@ -409,6 +418,14 @@ async function initApp() {
     controllerManager,
     cameraSystem,
     trafficSystem,
+    onToggle: (open) => {
+      controllerManager.resetInput();
+      touchControls.setEnabled(!open);
+      const mapHint = document.getElementById('fullmap-hover-info');
+      if (open && touchControls.available && mapHint) {
+        mapHint.textContent = 'Tap to teleport · Drag to pan · Use + / − to zoom';
+      }
+    },
     onTeleport: (x, z) => {
       controllerManager.teleportActiveTo(x, z, Math.PI);
       selectCamera('chase', true);
@@ -522,6 +539,7 @@ async function initApp() {
     trafficSystem,
     highwayTraffic,
     controllerManager,
+    touchControls,
     cameraSystem,
     lightingSystem,
     mapSystem,

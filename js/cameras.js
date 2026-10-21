@@ -1,6 +1,6 @@
 (function () {
 // js/cameras.js
-// Multi-camera system supporting Third-Person Chase (with interactive mouse orbit + zoom),
+// Multi-camera system supporting Third-Person Chase (with mouse/touch orbit + zoom),
 // Low-Angle Action Cam, POV/Cockpit Cam, 7 Iconic NYC Architectural Cameras, and Auto-Director Drone.
 
 const { THREE } = window.NYC;
@@ -36,7 +36,6 @@ class CameraSystem {
     this.orbitPitchOffset = 0.09;
     this.zoomMultiplier = 1.0;
     this.isDragging = false;
-    this.lastPointer = { x: 0, y: 0 };
     this.userOrbitTimer = 0;
 
     this.currentPos = new THREE.Vector3(0, 10, 380);
@@ -56,30 +55,61 @@ class CameraSystem {
   }
 
   bindPointerControls() {
-    this.domElement.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+    const canvas = this.domElement;
+    const pointers = new Map();
+    canvas.style.touchAction = 'none';
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || pointers.size >= 2) return;
+      // Only two touch pointers may share a gesture; mouse and pen drags stay independent.
+      if (pointers.size && (e.pointerType !== 'touch' || pointers.values().next().value.type !== 'touch')) return;
+      e.preventDefault();
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+      canvas.setPointerCapture(e.pointerId);
       this.isDragging = true;
-      this.lastPointer.x = e.clientX;
-      this.lastPointer.y = e.clientY;
-    });
-
-    window.addEventListener('pointermove', (e) => {
-      if (!this.isDragging) return;
-      const dx = e.clientX - this.lastPointer.x;
-      const dy = e.clientY - this.lastPointer.y;
-      this.lastPointer.x = e.clientX;
-      this.lastPointer.y = e.clientY;
-
-      this.orbitYawOffset -= dx * 0.0065;
-      this.orbitPitchOffset = Math.max(-0.32, Math.min(0.68, this.orbitPitchOffset + dy * 0.005));
       this.userOrbitTimer = 4.0;
     });
 
-    window.addEventListener('pointerup', () => {
-      this.isDragging = false;
+    canvas.addEventListener('pointermove', (e) => {
+      const pointer = pointers.get(e.pointerId);
+      if (!pointer) return;
+      e.preventDefault();
+      const dx = e.clientX - pointer.x;
+      const dy = e.clientY - pointer.y;
+      const pair = pointers.size === 2 ? [...pointers.values()] : null;
+      const previousDistance = pair ? Math.hypot(pair[0].x - pair[1].x, pair[0].y - pair[1].y) : 0;
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+
+      if (pair) {
+        const distance = Math.hypot(pair[0].x - pair[1].x, pair[0].y - pair[1].y);
+        if (previousDistance > 1 && distance > 1) {
+          this.zoomMultiplier = Math.max(0.45, Math.min(2.4, this.zoomMultiplier * previousDistance / distance));
+        }
+      } else {
+        this.orbitYawOffset -= dx * 0.0065;
+        this.orbitPitchOffset = Math.max(-0.32, Math.min(0.68, this.orbitPitchOffset + dy * 0.005));
+      }
+      this.userOrbitTimer = 4.0;
     });
 
-    this.domElement.addEventListener('wheel', (e) => {
+    const releasePointer = (id) => {
+      if (!pointers.delete(id)) return;
+      this.isDragging = pointers.size > 0;
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    };
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      canvas.addEventListener(type, (e) => releasePointer(e.pointerId));
+    }
+    const clearPointers = () => {
+      for (const id of pointers.keys()) releasePointer(id);
+    };
+    window.addEventListener('blur', clearPointers);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) clearPointers();
+    });
+
+    canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       this.zoomMultiplier = Math.max(0.45, Math.min(2.4, this.zoomMultiplier + e.deltaY * 0.001));
     }, { passive: false });

@@ -609,7 +609,7 @@ async function initApp() {
   await precompileShaders();
   markInit('compile');
 
-  // 6. 60 FPS Animation Loop
+  // 6. Animation Loop
   let lastTime = performance.now();
   let elapsed = 0;
   let frameCount = 0;
@@ -678,11 +678,12 @@ async function initApp() {
       });
     }
 
-    // Telemetry & 60 FPS monitor (updates DOM every 250ms)
+    // Telemetry uses wall time, not the clamped simulation step, so slow frames and high-refresh displays report
+    // their actual frame rate (updates DOM every 250ms).
     frameCount++;
-    fpsTimer += dt;
+    fpsTimer += Math.max(0, rawDt);
     if (fpsTimer >= 0.25) {
-      currentFps = Math.min(60, Math.round(frameCount / fpsTimer));
+      currentFps = Math.round(frameCount / fpsTimer);
       frameCount = 0;
       fpsTimer = 0;
 

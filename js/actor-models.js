@@ -1249,6 +1249,7 @@ const BUS_PARTS = {
 
 const BUS_SPEC = {
   name: 'bus',
+  headlight: [0.79, 0.8], // midpoint of each pair of white lamps; excludes the outer amber indicator
   zFront: 5.78,
   zRear: -5.78,
   wheelRadius: 0.48,

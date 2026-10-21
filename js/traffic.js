@@ -13,7 +13,10 @@ const { THREE, buildRoadNetwork, signalPhase, walkSignal } = window.NYC;
 const {
   cityUniforms,
   createContactShadowMaterial,
-  createCarFlareMaterial
+  createCarFlareMaterial,
+  HEADLIGHTS,
+  createVehicleHeadlight,
+  placeVehicleHeadlight
 } = window.NYC;
 const {
   CAR_PARTS,
@@ -365,7 +368,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   const headlightPool = [];
   for (let i = 0; i < HEADLIGHT_POOL_SIZE; i++) {
-    const spot = new THREE.SpotLight(0xfff4dc, 0, 26, 0.28, 0.74, 1.22);
+    const spot = createVehicleHeadlight();
     spot.position.set(0, -1000, 0);
     spot.target.position.set(0, -1001, 0);
     trafficLightsGroup.add(spot, spot.target);
@@ -1710,13 +1713,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
         const fade = smoothDistFade(v._effDist, vehCutoff * 0.62, vehCutoff);
         if (fade <= 0.001) continue;
         const spec = v.bus ? BUS_SPEC : BODY_SPECS[v.bodyType];
-        const zFront = spec.zFront + 0.35;
-        const lampY = v.bus ? 1.50 : 1.35;
-        const lampX = v.bus ? 0.96 : spec.headlight[0];
-        const sinY = v._sinY;
-        const cosY = v._cosY;
-        const aimDist = spec.zFront + (v.bus ? 8.2 : 7.4);
-        const fullReach = v.bus ? 27 : 25;
+        const fullReach = HEADLIGHTS.distance;
         let maxReach = fullReach;
         if (player.active && v.pAhead > 0 && v.pAhead < 30) {
           const latWeight = smoothDistFade(Math.abs(v.pRight), 2.2, 5.5);
@@ -1724,14 +1721,15 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
           maxReach = fullReach + (clampedReach - fullReach) * latWeight;
         }
 
-        const baseInt = (v.bus ? 215 : 185) * beamScale * fade;
+        const baseInt = (v.bus ? HEADLIGHTS.busIntensity : HEADLIGHTS.intensity) * beamScale * fade;
+        // Match the body instance, including suspension and impact rotation.
+        dummy.position.set(v.x, 0, v.z);
+        dummy.rotation.set(v.pitch, v.yaw + v.yawOffset, v.roll, 'YXZ');
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
         for (let side = -1; side <= 1; side += 2) {
           const spot = headlightPool[spotUsed++];
-          const lx = side * lampX;
-          const tx = side * (lampX + 0.25);
-          spot.position.set(v.x + lx * cosY + zFront * sinY, lampY, v.z - lx * sinY + zFront * cosY);
-          spot.target.position.set(v.x + tx * cosY + aimDist * sinY, 0.0, v.z - tx * sinY + aimDist * cosY);
-          spot.angle = 0.27;
+          placeVehicleHeadlight(spot, spec, side, dummy.matrix);
           spot.distance = maxReach;
           spot.intensity = baseInt;
         }
@@ -2076,7 +2074,7 @@ function createHighwayTraffic(scene, lanes) {
 
   const hwySpotPool = [];
   for (let i = 0; i < HWY_SPOT_POOL; i++) {
-    const spot = new THREE.SpotLight(0xfff4dc, 0, 24, 0.27, 0.74, 1.22);
+    const spot = createVehicleHeadlight();
     spot.position.set(0, -1000, 0);
     spot.target.position.set(0, -1001, 0);
     hwyLightsGroup.add(spot, spot.target);
@@ -2201,16 +2199,16 @@ function createHighwayTraffic(scene, lanes) {
       const b = lane.pts[i + 1];
       const x = a.x + (b.x - a.x) * t;
       const z = a.z + (b.z - a.z) * t;
+      const toEnd = lane.len - c.u;
+      const dip = c.u < toEnd ? c.u : toEnd;
+      const y = a.y + (b.y - a.y) * t - 2.4 * (1 - ease(dip));
       const dx = x - cam.x;
       const dz = z - cam.z;
-      const dy = a.y - cam.y;
+      const dy = y - cam.y;
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > HWY_FAR_CULL * HWY_FAR_CULL) continue;
       const lod = d2 < HWY_NEAR_LOD * HWY_NEAR_LOD ? 0 : d2 < HWY_MID_LOD * HWY_MID_LOD ? 1 : 2;
       if (lod > 0 && dx * fwd.x + dz * fwd.z < -40) continue;
-      const toEnd = lane.len - c.u;
-      const dip = c.u < toEnd ? c.u : toEnd;
-      const y = a.y + (b.y - a.y) * t - 2.4 * (1 - ease(dip));
       if (y < -3.6) continue; // in the Battery Park Underpass, out of sight behind the portals' screens
       const slope = (b.y - a.y) / segLen + 2.4 * easeSlope(dip) * (c.u < toEnd ? 1 : -1);
       let dYaw = lane.yaw[i + 1] - lane.yaw[i];
@@ -2244,10 +2242,8 @@ function createHighwayTraffic(scene, lanes) {
         if (effDist < HWY_LIGHT_DIST) {
           c._d2 = d2;
           c._effDist = effDist;
-          c._x = x;
-          c._y = y;
-          c._z = z;
-          c._yaw = yaw;
+          c._mesh = mesh;
+          c._slot = slot;
           c._brake = brake;
           hwyLitCars[hwyLitCount++] = c;
         }
@@ -2317,19 +2313,12 @@ function createHighwayTraffic(scene, lanes) {
         const fade = (t * t * (3 - 2 * t)) * ease(Math.min(c.u, c.lane.len - c.u));
         if (fade <= 0.001) continue;
         const spec = BODY_SPECS[c.kind];
-        const sy = Math.sin(c._yaw);
-        const cy = Math.cos(c._yaw);
-        const zFront = spec.zFront + 0.35;
-        const aimDist = spec.zFront + 7.4;
-        const lampX = spec.headlight[0];
-        const baseInt = 180 * beamScale * fade;
+        const baseInt = HEADLIGHTS.intensity * beamScale * fade;
+        // Reuse the exact rendered transform, including the road slope and underpass dip.
+        c._mesh.getMatrixAt(c._slot, m4);
         for (let side = -1; side <= 1; side += 2) {
           const spot = hwySpotPool[spotUsed++];
-          const lx = side * lampX;
-          const tx = side * (lampX + 0.25);
-          spot.position.set(c._x + lx * cy + zFront * sy, c._y + 1.35, c._z - lx * sy + zFront * cy);
-          spot.target.position.set(c._x + tx * cy + aimDist * sy, c._y, c._z - tx * sy + aimDist * cy);
-          spot.angle = 0.27;
+          placeVehicleHeadlight(spot, spec, side, m4);
           spot.intensity = baseInt;
         }
       }

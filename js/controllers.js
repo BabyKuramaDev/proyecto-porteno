@@ -28,6 +28,7 @@ const {
   createLoftedHelicopterMaterial
 } = window.NYC;
 const { PersonCrowd, PersonRig } = window.NYC;
+const { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } = window.NYC;
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
 
@@ -320,11 +321,8 @@ class ThirdPersonControllerManager {
 
     const headLights = [];
     for (const side of [-1, 1]) {
-      // Automotive low-beam projector cutoff: downward pitch to z=7.5m keeps the beam core on the asphalt
-      // road while vehicle bodies above bumper height sit in the upper penumbra cutoff (no white blowout)
-      const spot = new THREE.SpotLight(0xfff4dc, 0, 28, 0.27, 0.74, 1.22);
-      spot.position.set(side * spec.headlight[0], 1.35, spec.zFront + 0.35);
-      spot.target.position.set(side * 0.82, 0.0, spec.zFront + 7.4);
+      const spot = createVehicleHeadlight();
+      placeVehicleHeadlight(spot, spec, side);
       chassisPivot.add(spot, spot.target);
       headLights.push(spot);
     }
@@ -857,12 +855,9 @@ class ThirdPersonControllerManager {
     const beamScale = Math.min(1.28, Math.max(0.0, (glow - 0.60) * 1.45));
     const car = this.entities.car;
     if (car.headLights) {
-      const highBeam = this.activeMode === 'car' && this.keys.boost;
-      const headInt = (highBeam ? 340 : 250) * beamScale;
-      const headDist = highBeam ? 34 : 28;
       for (const spot of car.headLights) {
-        spot.intensity = headInt;
-        spot.distance = headDist;
+        // Accelerating does not change the headlamp output or range.
+        spot.intensity = HEADLIGHTS.intensity * beamScale;
       }
     }
     const bike = this.entities.cyclist;

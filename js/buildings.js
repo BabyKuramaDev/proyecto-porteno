@@ -2399,6 +2399,14 @@ function buildCityBlocks(scene) {
   let activeBlockCount = 0;
   const STREAM_RADIUS = 560; // High-detail architectural radius around player in meters
 
+  // Streaming rewrites only the active prefix; unused pool capacity need not cross the GPU queue.
+  function flagRange(attribute, count) {
+    if (count === 0) return;
+    attribute.clearUpdateRanges();
+    attribute.addUpdateRange(0, count * attribute.itemSize);
+    attribute.needsUpdate = true;
+  }
+
   function update(focusX, focusZ, force = false) {
     const dx = focusX - lastStreamX;
     const dz = focusZ - lastStreamZ;
@@ -2514,32 +2522,32 @@ function buildCityBlocks(scene) {
     dummy.rotation.set(0, 0, 0);
 
     corniceInst.count = corniceCount;
-    corniceInst.instanceMatrix.needsUpdate = true;
+    flagRange(corniceInst.instanceMatrix, corniceCount);
 
     legsInst.count = wtCount;
     barrelInst.count = wtCount;
     coneInst.count = wtCount;
-    legsInst.instanceMatrix.needsUpdate = true;
-    barrelInst.instanceMatrix.needsUpdate = true;
-    coneInst.instanceMatrix.needsUpdate = true;
+    flagRange(legsInst.instanceMatrix, wtCount);
+    flagRange(barrelInst.instanceMatrix, wtCount);
+    flagRange(coneInst.instanceMatrix, wtCount);
 
     hvacInst.count = hvacCount;
-    hvacInst.instanceMatrix.needsUpdate = true;
+    flagRange(hvacInst.instanceMatrix, hvacCount);
 
     feInst.count = feCount;
-    feInst.instanceMatrix.needsUpdate = true;
+    flagRange(feInst.instanceMatrix, feCount);
 
     awningInst.count = awningCount;
-    awningInst.instanceMatrix.needsUpdate = true;
-    if (awningInst.instanceColor) awningInst.instanceColor.needsUpdate = true;
+    flagRange(awningInst.instanceMatrix, awningCount);
+    if (awningInst.instanceColor) flagRange(awningInst.instanceColor, awningCount);
 
     signInsts.forEach((sInst, idx) => {
       sInst.count = signCounts[idx];
-      sInst.instanceMatrix.needsUpdate = true;
+      flagRange(sInst.instanceMatrix, signCounts[idx]);
     });
 
     shedInst.count = shedCount;
-    shedInst.instanceMatrix.needsUpdate = true;
+    flagRange(shedInst.instanceMatrix, shedCount);
   }
 
   function smoothFade(d, start, end) {

@@ -1,13 +1,14 @@
 // tools/build-geodata.mjs — writes js/nyc-geodata.js (see geo-base.mjs for the frame and the data sources)
 // usage: GEO_DATA=tools/data node --max-old-space-size=8192 tools/build-geodata.mjs [out.js]
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { geo, toWorld, rdp, rdpRing, ringArea, bbox, load, log, centroid } from './geo-base.mjs';
 import { pieces, STREETS, AVENUES } from './geo-streets.mjs';
 import { blocks, innerRing, roads, PLAZAS, CUT_Z, STRIP, SIDEWALK } from './geo-blocks.mjs';
 import { parkShapes, piers, bridges, nj, islands, manhattanSouth, manhattanNorth } from './geo-extra.mjs';
 import { buildRoadGraph } from './geo-roadgraph.mjs';
 
-const OUT = process.argv[2] || new URL('../js/nyc-geodata.js', import.meta.url).pathname;
+const OUT = process.argv[2] || fileURLToPath(new URL('../js/nyc-geodata.js', import.meta.url));
 const q = (v) => Math.round(v * 10) / 10;
 const flat = (pts) => pts.flatMap(([x, z]) => [q(x), q(z)]);
 const inDetail = (z) => z > CUT_Z - 250;

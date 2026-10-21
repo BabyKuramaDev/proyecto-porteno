@@ -9,12 +9,13 @@
 //   nycparks_manhattan.json NYC Parks properties, Manhattan                    data.cityofnewyork.us enfh-gkve
 //   osm_*.json             OpenStreetMap via Overpass (Central Park features, piers, NJ coastline)
 //
-// usage: node tools/build-geodata.mjs [dataDir] [outFile]
+// usage: GEO_DATA=tools/data node tools/build-geodata.mjs [outFile]
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DATA = process.env.GEO_DATA || path.join(path.dirname(new URL(import.meta.url).pathname), 'data');
+const DATA = process.env.GEO_DATA || fileURLToPath(new URL('data/', import.meta.url));
 const load = (f) => JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8'));
 const log = (...a) => console.log('[geodata]', ...a);
 

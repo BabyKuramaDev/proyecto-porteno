@@ -129,43 +129,37 @@ class ThirdPersonControllerManager {
   }
 
   bindKeyboard() {
+    const bindings = {
+      forward: ['KeyW', 'ArrowUp'],
+      backward: ['KeyS', 'ArrowDown'],
+      left: ['KeyA', 'ArrowLeft'],
+      right: ['KeyD', 'ArrowRight'],
+      up: ['Space', 'KeyE'],
+      down: ['KeyQ', 'KeyC'],
+      boost: ['ShiftLeft', 'ShiftRight']
+    };
+    const actionsByCode = new Map(Object.entries(bindings).flatMap(([action, codes]) => codes.map((code) => [code, action])));
+    const pressedCodes = new Set();
+
     const onKey = (e, isDown) => {
-      if (isTypingInField(e)) return;
-      const code = e.code;
-      switch (code) {
-        case 'KeyW':
-        case 'ArrowUp':
-          this.keys.forward = isDown;
-          break;
-        case 'KeyS':
-        case 'ArrowDown':
-          this.keys.backward = isDown;
-          break;
-        case 'KeyA':
-        case 'ArrowLeft':
-          this.keys.left = isDown;
-          break;
-        case 'KeyD':
-        case 'ArrowRight':
-          this.keys.right = isDown;
-          break;
-        case 'Space':
-        case 'KeyE':
-          this.keys.up = isDown;
-          break;
-        case 'KeyQ':
-        case 'KeyC':
-          this.keys.down = isDown;
-          break;
-        case 'ShiftLeft':
-        case 'ShiftRight':
-          this.keys.boost = isDown;
-          break;
-      }
+      const action = actionsByCode.get(e.code);
+      if (!action || (isDown && isTypingInField(e))) return;
+      if (isDown) pressedCodes.add(e.code);
+      else pressedCodes.delete(e.code);
+      // Releasing one binding must not cancel another key held for the same action.
+      this.keys[action] = bindings[action].some((code) => pressedCodes.has(code));
+    };
+    const resetKeys = () => {
+      pressedCodes.clear();
+      for (const action of Object.keys(bindings)) this.keys[action] = false;
     };
 
     window.addEventListener('keydown', (e) => onKey(e, true));
     window.addEventListener('keyup', (e) => onKey(e, false));
+    window.addEventListener('blur', resetKeys);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) resetKeys();
+    });
   }
 
   setMode(mode) {

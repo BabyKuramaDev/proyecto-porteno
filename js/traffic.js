@@ -2114,8 +2114,8 @@ function createHighwayTraffic(scene, lanes) {
     attr.needsUpdate = true;
   }
 
-  // The player's arc position and speed along `lane` if they are in it (within 2 m of the centre line, not on its
-  // underground stretches), else null
+  // The player's arc position and speed along `lane` if they are in it (within 2 m of the centre line and near
+  // its road height, not on its underground stretches), else null
   function playerInLane(lane, pl) {
     const [x0, x1, z0, z1] = lane.box;
     if (pl.x < x0 - 3 || pl.x > x1 + 3 || pl.z < z0 - 3 || pl.z > z1 + 3) return null;
@@ -2124,18 +2124,25 @@ function createHighwayTraffic(scene, lanes) {
       if (P[i].y < -1 && P[i + 1].y < -1) continue;
       const ax = P[i].x, az = P[i].z;
       const sx = P[i + 1].x - ax, sz = P[i + 1].z - az;
+      const horizontalLengthSq = sx * sx + sz * sz;
+      if (horizontalLengthSq === 0) continue;
       const L = lane.cum[i + 1] - lane.cum[i];
-      const t = ((pl.x - ax) * sx + (pl.z - az) * sz) / (L * L);
+      const t = ((pl.x - ax) * sx + (pl.z - az) * sz) / horizontalLengthSq;
       if (t < 0 || t > 1) continue;
-      if (Math.abs((pl.z - az) * sx - (pl.x - ax) * sz) / L < 2.0) return { u: lane.cum[i] + t * L, v: Math.max(0, (pl.vx * sx + pl.vz * sz) / L) };
+      const y = P[i].y + (P[i + 1].y - P[i].y) * t;
+      if (Math.abs(pl.y - y) >= 2.6) continue;
+      if (Math.abs((pl.z - az) * sx - (pl.x - ax) * sz) / Math.sqrt(horizontalLengthSq) < 2.0) {
+        // Convert horizontal progress to distance along the sloped lane, as with u above.
+        return { u: lane.cum[i] + t * L, v: Math.max(0, ((pl.vx * sx + pl.vz * sz) / horizontalLengthSq) * L) };
+      }
     }
     return null;
   }
 
   function update(dt, camera, entity, mode) {
     // 1. Car following (IDM) in every lane, the player counting as a leader
-    const pl = entity && mode !== 'helicopter' && entity.position.y < 2.6 ? {
-      x: entity.position.x, z: entity.position.z,
+    const pl = entity && mode !== 'helicopter' ? {
+      x: entity.position.x, y: entity.position.y, z: entity.position.z,
       vx: Math.sin(entity.heading || 0) * (entity.speed || 0) + (entity.vx || 0),
       vz: Math.cos(entity.heading || 0) * (entity.speed || 0) + (entity.vz || 0)
     } : null;

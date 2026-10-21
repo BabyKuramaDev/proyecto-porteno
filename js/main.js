@@ -11,17 +11,11 @@ const {
   positionView,
   metalness,
   roughness,
-  float,
   vec2,
-  vec3,
-  vec4,
-  smoothstep,
-  length,
-  min,
-  pow,
-  screenUV
+  smoothstep
 } = window.NYC.TSL;
-const { bloom, ssr } = window.NYC.PostFX;
+const { ssr } = window.NYC.PostFX;
+const { createPostProcessing } = window.NYC;
 const { ClusteredLighting } = window.NYC.Addons;
 
 const { getLocationLabel, isTypingInField } = window.NYC;
@@ -64,8 +58,6 @@ async function initApp() {
   });
   renderer.setPixelRatio(1.0);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   if (ClusteredLighting) {
     renderer.lighting = new ClusteredLighting(256, 32, 28, 48);
@@ -176,19 +168,9 @@ async function initApp() {
   ssrPass.intensity.value = 0.50;
   ssrPass.screenEdgeFadeBlack = true;
 
-  // Clamp extreme sub-pixel HDR specular fireflies before bloom while preserving rich glow on lamps, signs & windows
-  const bloomInput = min(scenePassColor, vec4(2.8, 2.8, 2.8, 1.0));
-  const bloomPass = bloom(bloomInput, 0.20, 0.42, 0.72);
-  if (typeof bloomPass.setResolutionScale === 'function') {
-    bloomPass.setResolutionScale(0.5);
-  }
-  const centeredUV = screenUV.sub(vec2(0.5, 0.5));
-  const vignette = float(1.0).sub(smoothstep(0.42, 0.88, length(centeredUV)).mul(0.16));
-
-  const combinedSSR = scenePassColor.add(vec4(ssrPass.rgb, 0.0)).add(bloomPass);
-  const filmicWithSSR = pow(combinedSSR, vec3(1.01, 1.00, 0.99)).mul(vignette);
-
-  const renderPipeline = new THREE.RenderPipeline(renderer, filmicWithSSR);
+  const colorGrade = createPostProcessing(renderer, scenePassColor, ssrPass);
+  const { bloomPass } = colorGrade;
+  const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)
   const modeButtons = document.querySelectorAll('[data-mode]');
@@ -282,6 +264,7 @@ async function initApp() {
 
   function selectTime(timeId) {
     lightingSystem.applyPreset(timeId);
+    colorGrade.applyPreset(lightingSystem.activePresetId);
     timeButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.getAttribute('data-time') === timeId);
     });
@@ -532,7 +515,7 @@ async function initApp() {
     renderer,
     scene,
     renderPipeline,
-    postFX: { scenePass, ssrPass, bloomPass },
+    postFX: { scenePass, ssrPass, bloomPass, colorGrade },
     cullingStats,
     cityBlocks,
     quadtree: cityBlocks.quadtree,

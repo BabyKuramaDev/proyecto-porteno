@@ -1095,9 +1095,10 @@ class PersonRig {
 
   /**
    * Walk the body to ground position (x, z), turning towards `heading`. `ground(owner, x, z)` gives the walking
-   * surface's height anywhere around. `air` lifts the body off the ground (jumps).
+   * surface's height anywhere around. `air` lifts the body off the ground (jumps). Set `updatePose` false for hidden
+   * pedestrians: their gait and planted feet still advance, while bone transforms wait until they are drawn.
    */
-  update(dt, x, z, heading, ground, owner = null, air = 0) {
+  update(dt, x, z, heading, ground, owner = null, air = 0, updatePose = true) {
     if (!this.placed || Math.hypot(x - this.x, z - this.z) > 3) {
       this.reset(x, z, heading, ground, owner);
       return;
@@ -1139,7 +1140,7 @@ class PersonRig {
         foot.toe = 0;
       }
       this.pelvisY = ground(owner, x, z) + air + ANKLE_H * s + this.legLength * 0.97 + (PELVIS_Y - HIP_Y) * s;
-      this.solve();
+      if (updatePose) this.solve();
       return;
     }
 
@@ -1297,7 +1298,7 @@ class PersonRig {
     }
     this.pelvisY += (target - this.pelvisY) * (1 - Math.exp(-dt / 0.045));
     this.pelvisY = Math.min(this.pelvisY, hard[0], hard[1]);
-    this.solve();
+    if (updatePose) this.solve();
   }
 
   setPelvisRotation() {

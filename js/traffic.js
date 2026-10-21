@@ -1777,11 +1777,12 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     return t > 2 && t < p.len - 2 ? CROSSWALK_Y : SIDEWALK_Y;
   }
 
-  // Every rig walks every frame (so nobody pops when they come into view); only those the camera may see (or whose
-  // shadow it may see) are drawn, the far ones with the light LOD
+  // Every rig's gait advances every frame; only those the camera may see (or whose shadow it may see) solve their
+  // bone transforms and are drawn, the far ones with the light LOD.
   function renderPed(p, dt) {
-    p.rig.update(dt, p.x, p.z, Math.atan2(p.ux * p.dir, p.uz * p.dir), pedGround, p);
-    if (hasView && !visible(p.x, p.z, 7)) return;
+    const draw = !hasView || visible(p.x, p.z, 7);
+    p.rig.update(dt, p.x, p.z, Math.atan2(p.ux * p.dir, p.uz * p.dir), pedGround, p, 0, draw);
+    if (!draw) return;
     pedCrowd.add(p.rig, Math.hypot(p.x - focusX, p.z - focusZ));
   }
 

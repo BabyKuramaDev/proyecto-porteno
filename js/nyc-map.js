@@ -695,8 +695,8 @@ class NYCMapSystem {
     const h = this.fullCanvas.clientHeight || window.innerHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(6e6 / Math.max(1, w * h)));
     this.fullDpr = dpr;
-    this.fullCanvas.width = Math.max(600, Math.floor(w * dpr));
-    this.fullCanvas.height = Math.max(400, Math.floor(h * dpr));
+    this.fullCanvas.width = Math.max(1, Math.floor(w * dpr));
+    this.fullCanvas.height = Math.max(1, Math.floor(h * dpr));
   }
 
   // Full map size in CSS pixels

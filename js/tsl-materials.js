@@ -2838,9 +2838,13 @@ function getSmokeCloudTexture() {
   const imgData = ctx.createImageData(size, size);
   const data = imgData.data;
 
+  // Adjacent texels and fBm samples reuse the same lattice points. Keep full-precision hashes for this bake only.
+  const hashRows = [];
   const hash = (ix, iy) => {
+    const row = hashRows[iy] || (hashRows[iy] = []);
+    if (row[ix] !== undefined) return row[ix];
     const s = Math.sin(ix * 127.1 + iy * 311.7 + 19.19) * 43758.5453;
-    return s - Math.floor(s);
+    return row[ix] = s - Math.floor(s);
   };
   const vnoise = (x, y) => {
     const ix = Math.floor(x);

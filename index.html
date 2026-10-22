@@ -6,6 +6,45 @@
   <title>Slop New York</title>
   <link rel="icon" href="data:," />
   <meta name="description" content="Photorealistic GTA-style 3D Slop New York simulation built with Three.js WebGPURenderer and TSL shaders featuring complete Manhattan street map (125th St to Battery Park), third-person navigation (Person, Car, Cyclist, Helicopter), and 11 cinematic cameras at 60 FPS." />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <script>
+    // Download the city scripts while Three.js loads; execute them only after its imports are ready below.
+    const nycAppScripts = (() => {
+      const assetVersion = '20261022-startup';
+      return [
+        './js/nyc-geodata.js',
+        './js/city-config.js',
+        './js/tsl-materials.js',
+        './js/trees.js',
+        './js/actor-models.js',
+        './js/vehicle-lights.js',
+        './js/pedestrians.js',
+        './js/lighting.js',
+        './js/city-grid.js',
+        './js/boroughs.js',
+        './js/buildings.js',
+        './js/landmarks.js',
+        './js/street-details.js',
+        './js/road-network.js',
+        './js/road-paint.js',
+        './js/traffic.js',
+        './js/controllers.js',
+        './js/touch-controls.js',
+        './js/cameras.js',
+        './js/nyc-map.js',
+        './js/scene-culling.js',
+        './js/post-processing.js',
+        './js/main.js'
+      ].map((src) => `${src}?v=${assetVersion}`);
+    })();
+    for (const src of nycAppScripts) {
+      const preload = document.createElement('link');
+      preload.rel = 'preload';
+      preload.as = 'script';
+      preload.href = src;
+      document.head.appendChild(preload);
+    }
+  </script>
   <!-- Inter (UI) & Overpass (street-name signs: modelled on Highway Gothic, the US road sign typeface) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -299,36 +338,9 @@
       }
     };
 
-    const scripts = [
-      './js/nyc-geodata.js',
-      './js/city-config.js',
-      './js/tsl-materials.js',
-      './js/trees.js',
-      './js/actor-models.js',
-      './js/vehicle-lights.js',
-      './js/pedestrians.js',
-      './js/lighting.js',
-      './js/city-grid.js',
-      './js/boroughs.js',
-      './js/buildings.js',
-      './js/landmarks.js',
-      './js/street-details.js',
-      './js/road-network.js',
-      './js/road-paint.js',
-      './js/traffic.js',
-      './js/controllers.js',
-      './js/touch-controls.js',
-      './js/cameras.js',
-      './js/nyc-map.js',
-      './js/scene-culling.js',
-      './js/post-processing.js',
-      './js/main.js'
-    ];
-
-    const assetVersion = '20261022-facade-projection';
-    for (const src of scripts) {
+    for (const src of nycAppScripts) {
       const s = document.createElement('script');
-      s.src = `${src}?v=${assetVersion}`;
+      s.src = src;
       s.async = false;
       document.head.appendChild(s);
     }

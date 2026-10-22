@@ -383,19 +383,18 @@ async function initApp() {
     elLocation.replaceChildren(...nodes);
   }
 
-  // Real street corners (city-config.js): heading 0 faces south (+z), PI north
-  const { streetZ, avenueX, LANDMARK_SITES } = window.NYC;
-  const owtc = LANDMARK_SITES['One World Trade Center'] || { x: -204, z: 5255 };
-  const teleportLocations = {
-    empire: { x: avenueX('5') + 3.6, z: streetZ(36), heading: 0, cam: 'chase' },
-    timessq: { x: avenueX('7') + 3.6, z: streetZ(46), heading: 0, cam: 'chase' },
-    chrysler: { x: avenueX('lex') + 3.6, z: streetZ(40), heading: Math.PI, cam: 'chase' },
-    grandcentral: { x: avenueX('park') - 8.0, z: streetZ(40), heading: Math.PI, cam: 'chase' },
-    bryant: { x: avenueX('6') + 3.6, z: streetZ(41), heading: Math.PI * 0.5, cam: 'chase' },
-    flatiron: { x: avenueX('5') + 3.6, z: streetZ(25), heading: 0, cam: 'chase' },
-    centralpark: { x: avenueX('6') + 3.6, z: streetZ(57), heading: Math.PI, cam: 'chase' },
-    owtc: { x: owtc.x + 95, z: owtc.z + 60, heading: -Math.PI * 0.5, cam: 'chase' }
-  };
+  function teleportTo(x, z, heading = Math.PI) {
+    const destination = controllerManager.teleportActiveTo(x, z, heading);
+    touchControls.reset();
+    cameraSystem.resetForTeleport();
+    selectCamera('chase', true);
+    mapSystem.waypoint = {
+      x: destination.x,
+      z: destination.z,
+      name: getLocationLabel(destination.x, destination.z)
+    };
+    return destination;
+  }
 
   const mapSystem = new NYCMapSystem({
     controllerManager,
@@ -409,20 +408,15 @@ async function initApp() {
         mapHint.textContent = 'Tap to teleport · Drag to pan · Use + / − to zoom';
       }
     },
-    onTeleport: (x, z) => {
-      controllerManager.teleportActiveTo(x, z, Math.PI);
-      selectCamera('chase', true);
-    }
+    onTeleport: teleportTo
   });
 
   teleportButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-teleport');
-      const loc = teleportLocations[key];
+      const loc = window.NYC.TELEPORT_LOCATIONS[key];
       if (loc) {
-        controllerManager.teleportActiveTo(loc.x, loc.z, loc.heading);
-        mapSystem.waypoint = { x: loc.x, z: loc.z, name: getLocationLabel(loc.x, loc.z) };
-        selectCamera(loc.cam, true);
+        teleportTo(loc.x, loc.z, loc.heading);
       }
       closePopovers();
     });

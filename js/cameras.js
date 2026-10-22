@@ -104,6 +104,7 @@ class CameraSystem {
     const clearPointers = () => {
       for (const id of pointers.keys()) releasePointer(id);
     };
+    this._clearPointers = clearPointers;
     window.addEventListener('blur', clearPointers);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) clearPointers();
@@ -124,6 +125,22 @@ class CameraSystem {
     if (snapImmediately) {
       this.initialized = false;
     }
+  }
+
+  resetForTeleport() {
+    // Arrive with a fresh chase view, without carrying a previous drive or gesture into the destination.
+    this._clearPointers();
+    this.isDragging = false;
+    this.orbitYawOffset = 0;
+    this.orbitPitchOffset = 0.09;
+    this.zoomMultiplier = 1;
+    this.userOrbitTimer = 0;
+    this.smoothedSpeed = 0;
+    this.followEntity = null;
+    this.followOffset.set(0, 0, 0);
+    this.followLookOffset.set(0, 0, 0);
+    this.followBaseY = 0;
+    this.setCameraPreset('chase', true);
   }
 
   getActivePreset() {

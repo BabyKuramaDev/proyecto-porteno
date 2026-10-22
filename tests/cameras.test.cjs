@@ -6,6 +6,27 @@ const vm = require('node:vm');
 
 const source = readFileSync(join(__dirname, '../js/cameras.js'), 'utf8');
 
+class Vector3 {
+  constructor(x = 0, y = 0, z = 0) { this.set(x, y, z); }
+  set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
+  copy(v) { return this.set(v.x, v.y, v.z); }
+  add(v) { return this.set(this.x + v.x, this.y + v.y, this.z + v.z); }
+  sub(v) { return this.set(this.x - v.x, this.y - v.y, this.z - v.z); }
+  subVectors(a, b) { return this.copy(a).sub(b); }
+  lerp(v, t) { return this.set(this.x + (v.x - this.x) * t, this.y + (v.y - this.y) * t, this.z + (v.z - this.z) * t); }
+}
+
+class PerspectiveCamera {
+  constructor(fov, aspect) {
+    this.fov = fov;
+    this.aspect = aspect;
+    this.position = new Vector3();
+    this.target = new Vector3();
+  }
+  updateProjectionMatrix() {}
+  lookAt(v) { this.target.copy(v); }
+}
+
 function eventTarget() {
   const listeners = new Map();
   return {
@@ -19,7 +40,10 @@ function eventTarget() {
   };
 }
 
-function cameraHarness() {
+function cameraHarness(entity = {
+  position: new Vector3(0, 0, 100), heading: 0, speed: 0, type: 'car',
+  chaseDistance: 6.9, chaseHeight: 2.12, cameraTargetOffset: new Vector3(0, 1, 0)
+}) {
   const window = eventTarget();
   const document = { ...eventTarget(), hidden: false };
   const canvas = { ...eventTarget(), style: {} };
@@ -31,17 +55,13 @@ function cameraHarness() {
     captured.delete(id);
     canvas.dispatch('lostpointercapture', { pointerId: id });
   };
-  window.NYC = {};
+  window.innerWidth = 1600;
+  window.innerHeight = 900;
+  window.NYC = { THREE: { Vector3, PerspectiveCamera } };
   vm.runInNewContext(source, { window, document });
-  // Bind the actual controls without constructing the 3D camera.
-  const camera = Object.create(window.NYC.CameraSystem.prototype);
-  Object.assign(camera, {
-    domElement: canvas, orbitYawOffset: 0, orbitPitchOffset: 0.09,
-    zoomMultiplier: 1, isDragging: false, userOrbitTimer: 0
-  });
-  camera.bindPointerControls();
+  const camera = new window.NYC.CameraSystem(canvas, { getActiveEntity: () => entity });
   return {
-    camera, canvas, controls, window, document, captured,
+    camera, canvas, controls, window, document, captured, entity,
     pointer(target, type, id, x, y = 0, pointerType = 'touch', button = 0) {
       const event = {
         pointerId: id, clientX: x, clientY: y, pointerType, button,
@@ -157,4 +177,64 @@ test('mouse orbit and wheel zoom retain their behavior and bounds', () => {
   close(h.camera.zoomMultiplier, 0.45);
   h.canvas.dispatch('wheel', { deltaY: 10000, preventDefault() {} });
   close(h.camera.zoomMultiplier, 2.4);
+});
+
+for (const preset of ['chase', 'observatory', 'drone']) {
+  test(`teleport after driving, orbiting and ${preset} snaps to a fresh chase view`, () => {
+    const h = cameraHarness();
+    h.entity.speed = 45;
+    for (let i = 0; i < 180; i++) h.camera.update(1 / 60, i / 60);
+    assert.ok(h.camera.smoothedSpeed > 44);
+    h.pointer(h.canvas, 'pointerdown', 1, 0);
+    h.pointer(h.canvas, 'pointermove', 1, 200, 80);
+    h.pointer(h.canvas, 'pointerup', 1, 200, 80);
+    h.canvas.dispatch('wheel', { deltaY: 1000, preventDefault() {} });
+    h.camera.setCameraPreset(preset, true);
+    h.camera.update(1 / 60, 4);
+
+    h.entity.position.set(-200, 20, 5300);
+    h.entity.heading = -Math.PI / 2;
+    h.entity.speed = 0;
+    h.camera.resetForTeleport();
+    const fresh = cameraHarness(h.entity).camera;
+    assert.equal(h.camera.activePresetId, 'chase');
+    assert.equal(h.camera.camera.fov, fresh.camera.fov);
+    // Compare arrival, follow re-anchoring, and movement after arrival, including a change in height.
+    for (let i = 0; i < 3; i++) {
+      if (i === 2) h.entity.position.set(-205, 23, 5304);
+      h.camera.update(1 / 60, 5 + i / 60);
+      fresh.update(1 / 60, 5 + i / 60);
+      for (const field of ['currentPos', 'currentLookAt']) {
+        for (const axis of ['x', 'y', 'z']) close(h.camera[field][axis], fresh[field][axis]);
+      }
+      for (const axis of ['x', 'y', 'z']) {
+        close(h.camera.camera.position[axis], fresh.camera.position[axis]);
+        close(h.camera.camera.target[axis], fresh.camera.target[axis]);
+      }
+    }
+  });
+}
+
+test('teleport releases every camera pointer and ignores old gestures before accepting a new drag', () => {
+  const h = cameraHarness();
+  h.pointer(h.canvas, 'pointerdown', 1, 0);
+  h.pointer(h.canvas, 'pointermove', 1, 20, 40);
+  h.pointer(h.canvas, 'pointerdown', 2, 100);
+  h.pointer(h.canvas, 'pointermove', 2, 200);
+  assert.equal(h.captured.size, 2);
+  h.camera.resetForTeleport();
+  assert.equal(h.captured.size, 0);
+  assert.equal(h.camera.isDragging, false);
+  assert.equal(h.camera.userOrbitTimer, 0);
+  for (const id of [1, 2]) {
+    h.pointer(h.canvas, 'pointermove', id, 500, 500);
+    h.pointer(h.canvas, 'pointerup', id, 500, 500);
+  }
+  close(h.camera.orbitYawOffset, 0);
+  close(h.camera.orbitPitchOffset, 0.09);
+  close(h.camera.zoomMultiplier, 1);
+  h.pointer(h.canvas, 'pointerdown', 3, 600);
+  h.pointer(h.canvas, 'pointermove', 3, 610);
+  close(h.camera.orbitYawOffset, -0.065);
+  assert.equal(h.camera.isDragging, true);
 });

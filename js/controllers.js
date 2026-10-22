@@ -190,15 +190,116 @@ class ThirdPersonControllerManager {
 
   teleportActiveTo(x, z, heading = Math.PI) {
     const ent = this.getActiveEntity();
-    ent.position.x = x;
-    ent.position.z = z;
-    ent.heading = heading;
-    ent.speed = 0;
-    if (this.activeMode === 'helicopter') {
-      ent.position.y = Math.max(ent.position.y, 92);
-    } else {
-      ent.position.y = this.getGroundHeight(x, z, this.activeMode);
+    this.resetInput();
+    if (!Number.isFinite(heading)) heading = ent.heading;
+    const heli = this.activeMode === 'helicopter';
+    const altitude = heli ? Math.max(92, Math.min(380, ent.position.y)) : 0;
+    const destination = this.findTeleportPosition(x, z, heading, altitude);
+    if (destination) {
+      ent.position.x = destination.x;
+      ent.position.z = destination.z;
+      ent.heading = heading;
+      ent.position.y = heli ? altitude : this.getGroundHeight(destination.x, destination.z, this.activeMode);
     }
+    ent.speed = 0;
+    if (this.activeMode === 'person') {
+      ent.verticalVel = 0;
+      ent.rig.reset(ent.position.x, ent.position.z, ent.heading, personGround, this);
+      ent.crowd.begin();
+      ent.crowd.add(ent.rig, 0);
+      ent.crowd.end();
+    } else if (this.activeMode === 'car') {
+      ent.vx = ent.vz = ent.angularVel = ent.steerAngle = 0;
+      ent.pitchVel = ent.rollVel = ent.heaveY = ent.heaveVel = 0;
+      ent.chassisPivot.rotation.x = ent.chassisPivot.rotation.z = 0;
+      ent.chassisPivot.position.y = 0;
+      ent.lastCollisionSpark = null;
+      for (const wheel of ent.wheels) if (wheel.isFront) wheel.steerPivot.rotation.y = 0;
+      if (ent.carState) ent.carState.value.x = 1;
+    } else if (this.activeMode === 'cyclist') {
+      ent.leanAngle = ent.leanPivot.rotation.z = 0;
+    } else if (heli) {
+      ent.verticalSpeed = ent.pitchAngle = ent.rollAngle = 0;
+      ent.tiltPivot.rotation.x = ent.tiltPivot.rotation.z = 0;
+      ent.tiltPivot.position.y = 0;
+    }
+    ent.mesh.position.copy(ent.position);
+    ent.mesh.rotation.y = ent.heading;
+    return { x: ent.position.x, z: ent.position.z };
+  }
+
+  // Find a fully clear arrival before moving the player. Sequential collision pushes can leave a player trapped
+  // between overlapping buildings, so test whole candidate footprints instead; retain the old position if none fits.
+  findTeleportPosition(x, z, heading, altitude) {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+    const heli = this.activeMode === 'helicopter';
+    const car = this.activeMode === 'car';
+    const radius = heli ? 4.5 : this.activeMode === 'person' ? 0.48 : 0.65;
+    const sinH = Math.sin(heading), cosH = Math.cos(heading);
+    const extX = (car ? Math.abs(cosH) * 0.86 + Math.abs(sinH) * 2.18 : radius) + 0.1;
+    const extZ = (car ? Math.abs(sinH) * 0.86 + Math.abs(cosH) * 2.18 : radius) + 0.1;
+    const reach = Math.max(extX, extZ);
+    const margin = heli ? 6000 : 0;
+    const entity = this.getActiveEntity();
+    // Conservative body cylinders, including the taxi's corners, bicycle wheels and helicopter tail/rotor.
+    const body = { person: [0.48, 1.9], car: [2.4, 1.9], cyclist: [1.0, 1.9], helicopter: [6.2, 3.2] };
+    const others = Object.values(this.entities).filter(e => e !== entity).map(e => ({
+      x: e.position.x, z: e.position.z, radius: body[e.type][0],
+      bottom: e.position.y - (e.type === 'helicopter' ? 0.7 : 0), top: e.position.y + body[e.type][1]
+    }));
+    const cameraBack = Math.cos(0.09) * entity.chaseDistance;
+    const cameraUp = entity.chaseHeight + Math.sin(0.09) * entity.chaseDistance * 0.85;
+    const clampPoint = (px, pz) => {
+      pz = Math.max(ISLAND_BOUNDS.minZ + (heli ? -6000 : 30), Math.min(ISLAND_BOUNDS.maxZ + margin, pz));
+      px = Math.max(ISLAND_BOUNDS.minX - margin, Math.min(ISLAND_BOUNDS.maxX + margin, px));
+      if (!heli && getIslandBoundsAtZ) {
+        const shore = getIslandBoundsAtZ(pz);
+        const west = shore.westX + 8, east = shore.eastX - 8;
+        if (west > east) return null;
+        px = Math.max(west, Math.min(east, px));
+      }
+      return { x: px, z: pz };
+    };
+    const clear = (p) => {
+      if (!p) return false;
+      const baseY = heli ? altitude : this.getGroundHeight(p.x, p.z, this.activeMode);
+      const y = heli ? altitude : this.activeMode === 'person' ? baseY + 1 : 1;
+      // Keep other player models out of both the arrival and its default chase view. A corridor also prevents a
+      // parked car between camera and character from hiding the character even when the camera itself is outside it.
+      const viewTop = baseY + Math.max(body[entity.type][1], cameraUp);
+      for (const other of others) {
+        if (other.bottom > viewTop + 0.3 || other.top < baseY - (heli ? 0.7 : 0) - 0.3) continue;
+        const dx = other.x - p.x, dz = other.z - p.z;
+        const back = Math.max(0, Math.min(cameraBack, -dx * sinH - dz * cosH));
+        if (Math.hypot(dx + sinH * back, dz + cosH * back) < other.radius + Math.max(body[entity.type][0], 0.5) + 0.1) return false;
+      }
+      for (const c of this.nearColliders(p.x, p.z, reach)) {
+        if (y > c.maxY + 1.5) continue;
+        if (p.x + extX <= c.minX || p.x - extX >= c.maxX || p.z + extZ <= c.minZ || p.z - extZ >= c.maxZ) continue;
+        if (c.obb) {
+          const o = c.obb, dx = p.x - o.cx, dz = p.z - o.cz;
+          const ls = sinH * o.cs - cosH * o.sn, lc = sinH * o.sn + cosH * o.cs;
+          const ex = (car ? Math.abs(lc) * 0.86 + Math.abs(ls) * 2.18 : radius) + 0.1;
+          const ez = (car ? Math.abs(ls) * 0.86 + Math.abs(lc) * 2.18 : radius) + 0.1;
+          if (Math.abs(dx * o.cs - dz * o.sn) >= o.hx + ex || Math.abs(dx * o.sn + dz * o.cs) >= o.hz + ez) continue;
+        }
+        return false;
+      }
+      return true;
+    };
+    const origin = clampPoint(x, z);
+    if (clear(origin)) return origin;
+    // Four-metre rings cover nearby streets and courtyards, with bounded work even for a click inside a large block.
+    const cx = origin ? origin.x : Math.max(ISLAND_BOUNDS.minX, Math.min(ISLAND_BOUNDS.maxX, x));
+    const cz = origin ? origin.z : Math.max(ISLAND_BOUNDS.minZ + 30, Math.min(ISLAND_BOUNDS.maxZ, z));
+    for (let distance = 4; distance <= 256; distance += 4) {
+      for (let i = 0; i < 32; i++) {
+        const angle = i * Math.PI / 16;
+        const p = clampPoint(cx + Math.cos(angle) * distance, cz + Math.sin(angle) * distance);
+        if (clear(p)) return p;
+      }
+    }
+    return null;
   }
 
   // =========================================================================

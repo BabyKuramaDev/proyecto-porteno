@@ -592,6 +592,19 @@ for (const b of BLOCKS) b.district = districtAt(b.cx, b.cz);
 // Landmarks (real footprints from OpenStreetMap: centre, grid-aligned width x depth, height)
 // ---------------------------------------------------------------------------------------------------------------------
 const LANDMARK_SITES = GEO.landmarks;
+// Street-level arrivals shared by every travel mode. Heading 0 faces south (+z), PI north.
+const owtc = LANDMARK_SITES['One World Trade Center'];
+const TELEPORT_LOCATIONS = {
+  empire: { x: avenueX('5') + 3.6, z: streetZ(36), heading: 0 },
+  timessq: { x: avenueX('7') + 3.6, z: streetZ(46), heading: 0 },
+  chrysler: { x: avenueX('lex') + 3.6, z: streetZ(40), heading: Math.PI },
+  grandcentral: { x: avenueX('park') - 8.0, z: streetZ(40), heading: Math.PI },
+  bryant: { x: avenueX('6') + 3.6, z: streetZ(41), heading: Math.PI * 0.5 },
+  flatiron: { x: avenueX('5') + 3.6, z: streetZ(25), heading: 0 },
+  centralpark: { x: avenueX('6') + 3.6, z: streetZ(57), heading: Math.PI },
+  // West St & Vesey St: a clear view of the tower with room for every mode's chase camera.
+  owtc: { x: -305.7, z: 5210, heading: Math.atan2(owtc.x + 305.7, owtc.z - 5210) }
+};
 const site = (name, fallback) => LANDMARK_SITES[name] || fallback;
 const NYC_LANDMARKS = [
   ['esb', 'Empire State Building', 'Empire State', 'Empire State Building', 'Midtown South'],
@@ -773,6 +786,7 @@ Object.assign(window.NYC, {
   ROADS,
   NYC_LANDMARKS,
   LANDMARK_SITES,
+  TELEPORT_LOCATIONS,
   ISLAND_BOUNDS,
   LANDMARK_BLOCKS,
   BLOCKS,

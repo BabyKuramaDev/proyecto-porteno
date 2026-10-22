@@ -31,6 +31,7 @@ const {
   normalGeometry,
   normalView,
   normalViewGeometry,
+  modelNormalMatrix,
   frontFacing,
   cameraPosition,
   cameraProjectionMatrix,
@@ -171,6 +172,15 @@ const canyonSkyAONode = Fn(() => {
 const _curtainWallCache = new Map();
 const _preWarCache = new Map();
 
+// Camera-independent facade frame: the view/world normal round trip can change the dominant axis on 45-degree
+// walls. Resolve near-ties in the vertex shader and keep that choice flat across each face.
+const facadeNormalVertex = normalize(modelNormalMatrix.mul(normalLocal));
+const facadeWorldNormal = varying(facadeNormalVertex, 'vFacadeWorldNormal').normalize();
+const facadeAlongZ = varying(
+  step(abs(facadeNormalVertex.z).sub(0.0001), abs(facadeNormalVertex.x)),
+  'vFacadeAlongZ'
+).setInterpolation(THREE.InterpolationSamplingType.FLAT, THREE.InterpolationSamplingMode.EITHER);
+
 /**
  * Lightweight, Fast-Compiling 3D Parallax Apartment Interior Mapping (Upper Floors Only)
  * Modelled directly after `interior()` in `three/addons/generators/city/SkyscraperGenerator.js`:
@@ -219,12 +229,10 @@ const evaluateApartmentInterior = Fn(([uCoord, vCoord, winUV, cellId, winWNode, 
   // View ray `dir` in world meters in the room's (across, up, depth) frame. `across` runs along the wall's tangent
   // (+x on walls facing ±z, +z on walls facing ±x, turning with walls that follow a non-grid street)
   const rayWorld = normalize(positionWorld.sub(cameraPosition)).toVar();
-  const nW = abs(normalWorldGeometry).toVar();
-  const useZ = step(nW.z, nW.x).toVar();
-  const tSign = mix(sign(normalWorldGeometry.z).negate(), sign(normalWorldGeometry.x), useZ);
-  const dirX = dot(rayWorld, vec3(normalWorldGeometry.z.negate(), 0.0, normalWorldGeometry.x).mul(tSign)).toVar();
+  const tSign = mix(sign(facadeWorldNormal.z).negate(), sign(facadeWorldNormal.x), facadeAlongZ);
+  const dirX = dot(rayWorld, vec3(facadeWorldNormal.z.negate(), 0.0, facadeWorldNormal.x).mul(tSign)).toVar();
   const dirY = rayWorld.y.toVar();
-  const dirZ = max(abs(dot(rayWorld, normalWorldGeometry)), 0.05).toVar();
+  const dirZ = max(abs(dot(rayWorld, facadeWorldNormal)), 0.05).toVar();
 
   // Slab intersection with the far planes of the room box:
   // [-halfW .. +halfW] x [-halfH .. +halfH] x [setback .. setback + depth]
@@ -367,10 +375,10 @@ const WALL_KINDS = { shop: 0, entry: 1, rear: 2, lotLine: 3, blankStone: 4 };
 function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
   // Box-local walls are told apart by the box's own normals (createFacadeBoxes instances may be turned about +y to
   // follow a non-grid street); world-space walls by the world normal
-  const nWall = boxLocal ? normalGeometry : normalWorldGeometry;
+  const nWall = boxLocal ? normalGeometry : facadeWorldNormal;
   const nW = abs(nWall);
   const isRoof = step(0.75, nW.y);
-  const alongZ = step(nW.z, nW.x);
+  const alongZ = boxLocal ? step(nW.z, nW.x) : facadeAlongZ;
   let uCoord = mix(positionWorld.x, positionWorld.z, alongZ);
   let bayWidth = float(windowWidth);
   let gridU = uCoord.div(bayWidth);

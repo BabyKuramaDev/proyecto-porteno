@@ -170,7 +170,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   let nypdCount = 0;
 
   for (let i = 0; i < NUM_CARS; i++) {
-    const isNYPD = (i % 10) === 6;
+    const isNYPD = (i % 40) === 6;
     const isTaxi = !isNYPD && (i % 7) < 4;
     const isSUV = !isNYPD && !isTaxi && (i % 2 === 0);
 

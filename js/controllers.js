@@ -35,6 +35,29 @@ import { bryantParkLawn } from './landmarks.js';
 const SPAWN_Z = streetZ(37);
 const groundCollider = { type: 'ground' };
 
+const CAR_DRIVE = {
+  speed: 23.5, boostSpeed: 36, reverseSpeed: 10.5, acceleration: 14, boostAcceleration: 21,
+  rolling: 0.18, drag: 0.0012, brake: 9
+};
+const BICYCLE_DRIVE = {
+  speed: 12.8, boostSpeed: 19, reverseSpeed: 4.5, acceleration: 9, boostAcceleration: 13.5,
+  rolling: 0.08, drag: 0.004, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
+};
+
+function driveSpeed(speed, throttle, boost, dt, drive) {
+  const braking = speed * throttle < 0;
+  const magnitude = Math.abs(speed);
+  const deceleration = drive.rolling + (braking ? Math.abs(throttle) * drive.brake : 0);
+  // Constant rolling resistance and quadratic air drag, without crossing zero or large-dt instability.
+  const coasting = Math.max(0, magnitude - deceleration * dt) / (1 + drive.drag * magnitude * dt);
+  if (!throttle || braking) return Math.sign(speed) * coasting;
+
+  const limit = throttle < 0 ? drive.reverseSpeed : boost ? drive.boostSpeed : drive.speed;
+  const acceleration = boost ? drive.boostAcceleration : drive.acceleration;
+  // Releasing boost removes the extra power; existing momentum decays naturally instead of being clamped.
+  return Math.sign(throttle) * Math.min(Math.max(limit, coasting), coasting + Math.abs(throttle) * acceleration * dt);
+}
+
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
 
@@ -1058,20 +1081,16 @@ class ThirdPersonControllerManager {
 
   updateCar(dt) {
     const c = this.entities.car;
-    const maxSpeed = this.keys.boost ? 36.0 : 23.5;
-    const accel = this.keys.boost ? 21.0 : 14.0;
+    const maxSpeed = this.keys.boost ? CAR_DRIVE.boostSpeed : CAR_DRIVE.speed;
 
     let throttle = 0;
     if (this.keys.forward) throttle = this.keys.forward;
     else if (this.keys.backward) throttle = -this.keys.backward;
 
-    if (throttle !== 0) {
-      c.speed += throttle * accel * dt;
-      c.speed = Math.max(-maxSpeed * 0.45, Math.min(maxSpeed, c.speed));
-    } else {
-      c.speed *= Math.max(0, 1 - dt * 2.8);
-      if (Math.abs(c.speed) < 0.08) c.speed = 0;
-    }
+    const braking = c.speed * throttle < 0;
+    const previousSpeed = c.speed;
+    c.speed = driveSpeed(c.speed, throttle, this.keys.boost, dt, CAR_DRIVE);
+    const acceleration = dt > 0 ? (c.speed - previousSpeed) / dt : 0;
 
     let steerInput = 0;
     if (this.keys.left) steerInput = this.keys.left;
@@ -1101,7 +1120,7 @@ class ThirdPersonControllerManager {
     c.position.y = this.getGroundHeight(c.position.x, c.position.z, 'car');
 
     // 3-DOF Spring-Damper Chassis Suspension (Pitch, Roll & Vertical Heave)
-    const targetPitch = -throttle * 0.026;
+    const targetPitch = -Math.max(-1, Math.min(1, acceleration / CAR_DRIVE.acceleration)) * 0.026;
     const targetRoll = -c.steerAngle * (c.speed / maxSpeed) * 0.092;
     const springK = 68.0;
     const dampC = 11.2;
@@ -1115,7 +1134,7 @@ class ThirdPersonControllerManager {
     c.chassisPivot.position.y = c.heaveY;
 
     if (c.carState) {
-      c.carState.value.x = throttle < 0 || Math.abs(c.speed) < 0.6 ? 1 : 0;
+      c.carState.value.x = braking || (c.speed === 0 && !throttle) ? 1 : 0;
     }
 
     const forwardDist = (c.position.x - prevX) * Math.sin(c.heading) + (c.position.z - prevZ) * Math.cos(c.heading);
@@ -1132,20 +1151,12 @@ class ThirdPersonControllerManager {
 
   updateCyclist(dt) {
     const b = this.entities.cyclist;
-    const maxSpeed = this.keys.boost ? 19.0 : 12.8;
-    const accel = this.keys.boost ? 13.5 : 9.0;
 
     let throttle = 0;
     if (this.keys.forward) throttle = this.keys.forward;
     else if (this.keys.backward) throttle = -0.6 * this.keys.backward;
 
-    if (throttle !== 0) {
-      b.speed += throttle * accel * dt;
-      b.speed = Math.max(-4.5, Math.min(maxSpeed, b.speed));
-    } else {
-      b.speed *= Math.max(0, 1 - dt * 2.4);
-      if (Math.abs(b.speed) < 0.05) b.speed = 0;
-    }
+    b.speed = driveSpeed(b.speed, throttle, this.keys.boost, dt, BICYCLE_DRIVE);
 
     let turnInput = 0;
     if (this.keys.left) turnInput = this.keys.left;

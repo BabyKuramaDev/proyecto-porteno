@@ -173,11 +173,13 @@ function ratchetBuffer(context) {
 
 function sirenSweepWave(context) {
   const real = new Float32Array(25), imaginary = new Float32Array(25);
-  // Rounded, asymmetric rise and return: a motor-driven sweep rather than a perfectly sinusoidal vibrato.
+  // Electronic wail/yelp circuits use a nearly triangular control voltage, with softened turning points.
   for (let harmonic = 1; harmonic < real.length; harmonic++) {
     for (let i = 0; i < 512; i++) {
       const phase = i / 512;
-      const value = phase < 0.62 ? -Math.cos(Math.PI * phase / 0.62) : Math.cos(Math.PI * (phase - 0.62) / 0.38);
+      const ramp = phase < 0.46 ? phase / 0.46 : (1 - phase) / 0.54;
+      const triangle = 2 * ramp - 1;
+      const value = triangle * 0.88 + Math.sin(triangle * Math.PI / 2) * 0.12;
       real[harmonic] += value * Math.cos(2 * Math.PI * harmonic * phase) / 256;
       imaginary[harmonic] += value * Math.sin(2 * Math.PI * harmonic * phase) / 256;
     }
@@ -253,7 +255,7 @@ export function createSynthResources(context) {
     rotorEnvelope: helicopter.envelope,
     turbine: turbineBuffer(context),
     ratchet: ratchetBuffer(context),
-    sirenWave: wave([0, 1, 0.055, 0.48, 0.035, 0.23, 0.025, 0.13, 0.015, 0.07]),
+    sirenWave: wave([0, 1, 0.13, 0.29, 0.055, 0.11, 0.025, 0.045, 0.012, 0.018]),
     sirenSweep: sirenSweepWave(context),
     voiceSerial: 0
   };
@@ -474,31 +476,37 @@ export function createMotorVoice(context, resources, kind, output) {
       noiseRate(doppler, now);
     };
   } else {
-    const siren = oscillator(resources.sirenWave, 1000);
-    const highpass = filter('highpass', 270, 0.7);
-    const hornFilter = filter('lowpass', 3800, 0.55);
+    const siren = oscillator(resources.sirenWave, 1125);
+    const highpass = filter('highpass', 480, 0.7);
+    const hornBody = filter('peaking', 1750, 1.1);
+    hornBody.gain.value = 3.5;
+    const hornFilter = filter('lowpass', 4200, 0.65);
     const sirenGain = gain();
-    siren.connect(highpass).connect(hornFilter).connect(sirenGain).connect(mix);
-    const sweep = oscillator(resources.sirenSweep, 0.28);
+    siren.connect(highpass).connect(hornBody).connect(hornFilter).connect(sirenGain).connect(mix);
+    const sweep = oscillator(resources.sirenSweep, 0.2);
     const sweepDepth = gain();
     sweep.connect(sweepDepth).connect(siren.frequency);
     const envelopeDepth = gain();
     sweep.connect(envelopeDepth).connect(sirenGain.gain);
     const sirenFrequency = smoothParameter(siren.frequency, 0.09, 0.1);
-    const sweepFrequency = smoothParameter(sweep.frequency, 0.14, 0.002);
+    const sweepFrequency = smoothParameter(sweep.frequency, 0.035, 0.002, true);
     const sweepRange = smoothParameter(sweepDepth.gain, 0.09, 0.1);
     const sirenLevel = smoothParameter(sirenGain.gain, 0.10);
     const envelopeLevel = smoothParameter(envelopeDepth.gain, 0.10);
     const sirenCutoff = smoothParameter(hornFilter.frequency, 0.12, 1);
+    const hornFrequency = smoothParameter(hornBody.frequency, 0.12, 1);
     render = (speed, load, doppler, now) => {
-      const pitch = (0.97 + variation * 0.06) * doppler;
-      sirenFrequency(1000 * pitch, now);
-      sweepRange(450 * pitch, now);
-      // Long wails and fast yelps share a horn spectrum; the sweep also changes radiated amplitude slightly.
-      sweepFrequency((variation < 0.65 ? 0.23 + variation * 0.12 : 3.1 + variation * 1.3) * doppler, now);
-      sirenLevel(0.125, now);
-      envelopeLevel(0.025, now);
-      sirenCutoff(3900 * doppler, now);
+      const pitch = (0.98 + variation * 0.04) * doppler;
+      sirenFrequency(1125 * pitch, now);
+      sweepRange(425 * pitch, now);
+      // Hold a long wail, then briefly select yelp. Different cars switch independently; the oscillator
+      // keeps its phase through a change, and Doppler shifts both the pitch and the sweep cadence.
+      const yelp = (now + variation * 24) % 24 >= 19;
+      sweepFrequency((yelp ? 3 : 0.2) * (0.97 + variation * 0.06) * doppler, now);
+      sirenLevel(0.09, now);
+      envelopeLevel(0.01, now);
+      sirenCutoff(4200 * doppler, now);
+      hornFrequency(1750 * doppler, now);
     };
   }
 

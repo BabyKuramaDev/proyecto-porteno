@@ -1,6 +1,6 @@
 // Cheap outdoor obstruction using the same static building bounds as movement. Nearby bounds are cached;
 // only audible voices trace them, a few times per second. This deliberately avoids mesh raycasts or audio-rate DSP.
-function thickness(c, ax, ay, az, bx, by, bz) {
+function thickness(c, ax, ay, az, bx, by, bz, allowEndInside = false) {
   let minX = c.minX, maxX = c.maxX, minZ = c.minZ, maxZ = c.maxZ;
   if (c.obb) {
     const o = c.obb;
@@ -12,7 +12,7 @@ function thickness(c, ax, ay, az, bx, by, bz) {
   const minY = c.minY ?? 0, maxY = c.maxY;
   // A chase camera can briefly enter a conservative collision box. Do not silence the entire city in that case.
   if (ax > minX && ax < maxX && az > minZ && az < maxZ && ay > minY && ay < maxY) return 0;
-  if (bx > minX && bx < maxX && bz > minZ && bz < maxZ && by > minY && by < maxY) return 0;
+  if (!allowEndInside && bx > minX && bx < maxX && bz > minZ && bz < maxZ && by > minY && by < maxY) return 0;
   const dx = bx - ax, dy = by - ay, dz = bz - az;
   let enter = 0, exit = 1;
   if (Math.abs(dx) < 1e-7) {
@@ -41,19 +41,36 @@ class CityAcoustics {
     this.controllers = controllerManager;
     this.buildings = [];
     this.nextRefresh = 0;
+    this.enclosure = 0;
     this.x = Infinity;
+    this.y = Infinity;
     this.z = Infinity;
   }
 
   update(listener, now) {
-    if (now < this.nextRefresh && Math.hypot(listener.x - this.x, listener.z - this.z) < 20) return;
-    this.x = listener.x; this.z = listener.z;
+    if (now < this.nextRefresh && Math.hypot(listener.x - this.x, listener.y - this.y, listener.z - this.z) < 20) return;
+    this.x = listener.x; this.y = listener.y; this.z = listener.z;
     this.nextRefresh = now + 0.5;
     this.buildings.length = 0;
     // Obstructions near the listener dominate street-level sound; distant geometry need not join this cache.
     for (const c of this.controllers.nearColliders(this.x, this.z, 200)) {
       if (c.maxY > 3 && c.maxX - c.minX > 2 && c.maxZ - c.minZ > 2) this.buildings.push(c);
     }
+
+    // Eight rising probes estimate nearby reflective walls, including their height. Reuse the bounds cache
+    // at 2 Hz: narrow streets are enclosed, while parks, waterfronts and positions above roofs are open.
+    let covered = 0;
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      const x = this.x + Math.cos(angle) * 80, z = this.z + Math.sin(angle) * 80;
+      let depth = 0;
+      for (const c of this.buildings) {
+        depth = Math.max(depth, thickness(c, this.x, this.y, this.z, x, this.y + 40, z, true));
+        if (depth > 40) break;
+      }
+      covered += 1 - Math.exp(-depth * 0.1);
+    }
+    this.enclosure = covered / 8;
   }
 
   obstruction(source, listener, height = 0) {

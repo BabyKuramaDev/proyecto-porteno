@@ -111,7 +111,7 @@ class CityAudioSystem {
     this.onCollision = (impact) => this.crash(impact);
     for (const system of this.collisionSystems) system.setCollisionListener?.(this.onCollision);
     this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0 };
-    this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0 };
+    this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0, enclosure: 0 };
     this.footPosition = { x: 0, y: 0, z: 0, seed: 0 };
     this.onGesture = (event) => {
       if (event.type === 'keydown' && (event.repeat || event.metaKey || event.ctrlKey || /INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))) return;
@@ -167,11 +167,16 @@ class CityAudioSystem {
     this.master.gain.value = 0;
     this.mix.connect(this.compressor).connect(this.master).connect(context.destination);
     this.reflections = context.createGain();
-    this.reflections.gain.value = 0.12;
+    this.reflections.gain.value = 0.02;
     this.reverb = context.createConvolver();
     this.reverb.normalize = false;
     this.reverb.buffer = this.resources.impulse;
-    this.reflections.connect(this.reverb).connect(this.mix);
+    this.reflectionFilter = context.createBiquadFilter();
+    setControlRate(this.reflectionFilter.frequency, this.reflectionFilter.detune, this.reflectionFilter.Q, this.reflectionFilter.gain);
+    this.reflectionFilter.type = 'lowpass';
+    this.reflectionFilter.frequency.value = 2400;
+    this.reflectionFilter.Q.value = 0.5;
+    this.reflections.connect(this.reverb).connect(this.reflectionFilter).connect(this.mix);
     this.wind = createWindVoice(context, this.resources, this.mix);
     context.onstatechange = () => this.onStateChange();
   }
@@ -383,6 +388,9 @@ class CityAudioSystem {
     }
     this.haveListener = true;
     this.acoustics.update(this.listener, now);
+    const enclosure = this.acoustics.enclosure;
+    smooth(this.reflections.gain, 0.02 + enclosure * 0.22, now, 0.4);
+    smooth(this.reflectionFilter.frequency, 2400 + enclosure * 3400, now, 0.4);
     smooth(this.master.gain, 0.65, now, 0.12);
     const sources = this.sources.collect(this.listener, elapsed);
     for (let i = this.events.length - 1; i >= 0; i--) {
@@ -455,7 +463,7 @@ class CityAudioSystem {
         }
       }
     }
-    Object.assign(this.windParams, { speed: Math.min(sources.motion, 50), altitude: position.y, traffic: sources.traffic, night: night ? 1 : 0 });
+    Object.assign(this.windParams, { speed: Math.min(sources.motion, 50), altitude: position.y, traffic: sources.traffic, night: night ? 1 : 0, enclosure });
     this.wind.update(this.windParams, now);
   }
 
@@ -467,7 +475,7 @@ class CityAudioSystem {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.reset();
     this.wind?.dispose(true);
-    for (const node of [this.mix, this.compressor, this.master, this.reflections, this.reverb]) node?.disconnect();
+    for (const node of [this.mix, this.compressor, this.master, this.reflections, this.reverb, this.reflectionFilter]) node?.disconnect();
     if (this.context) {
       this.context.onstatechange = null;
       this.context.close().catch(() => {});

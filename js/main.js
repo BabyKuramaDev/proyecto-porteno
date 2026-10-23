@@ -18,6 +18,7 @@ import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
 import { LightingSystem } from './lighting.js';
 import { NYCMapSystem } from './nyc-map.js';
 import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
+import { CityAudioSystem } from './audio-system.js';
 
 // js/main.js
 // Main entry point for New York City (Midtown Manhattan) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
@@ -101,6 +102,22 @@ async function initApp() {
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
   const touchControls = new TouchControls(controllerManager);
+  const soundButton = document.getElementById('btn-sound');
+  const audioSystem = new CityAudioSystem({ controllerManager, trafficSystem, highwayTraffic, streetDetails }, {
+    onStateChange: updateSoundButton
+  });
+  function updateSoundButton() {
+    if (!soundButton) return;
+    soundButton.disabled = !audioSystem.supported;
+    soundButton.setAttribute('aria-pressed', String(audioSystem.enabled));
+    soundButton.setAttribute('aria-label', audioSystem.enabled ? 'Mute sound' : 'Enable sound');
+    soundButton.title = audioSystem.supported ? `${audioSystem.enabled ? 'Mute' : 'Enable'} sound [N]` : 'Web Audio is unavailable';
+    soundButton.querySelector('use').setAttribute('href', audioSystem.enabled ? '#i-sound' : '#i-sound-off');
+  }
+  soundButton?.addEventListener('click', () => audioSystem.setEnabled(!audioSystem.enabled));
+  updateSoundButton();
+  // pagehide also covers navigation away on mobile; preserve the context across back-forward cache restores.
+  window.addEventListener('pagehide', (event) => { if (!event.persisted) audioSystem.dispose(); });
   markInit('controllers');
 
   // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
@@ -188,7 +205,7 @@ async function initApp() {
   // Keyboard guide for each mode: [keys, action]
   const controlHints = {
     person: [[['W', 'S'], 'Walk'], [['A', 'D'], 'Turn'], [['Shift'], 'Sprint'], [['Space'], 'Jump'], [['Drag'], 'Orbit']],
-    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['Drag'], 'Orbit']],
+    car: [[['W', 'S'], 'Drive / Reverse'], [['A', 'D'], 'Steer'], [['Shift'], 'Boost'], [['B'], 'Horn'], [['Drag'], 'Orbit']],
     cyclist: [[['W', 'S'], 'Pedal / Brake'], [['A', 'D'], 'Lean & Turn'], [['Shift'], 'Sprint'], [['Drag'], 'Orbit']],
     helicopter: [[['W', 'S'], 'Pitch'], [['A', 'D'], 'Yaw'], [['Space', 'E'], 'Ascend'], [['Q', 'C'], 'Descend'], [['Shift'], 'Boost']]
   };
@@ -475,6 +492,12 @@ async function initApp() {
       case 'KeyH':
         if (hudToggleBtn) hudToggleBtn.click();
         break;
+      case 'KeyN':
+        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) audioSystem.setEnabled(!audioSystem.enabled);
+        break;
+      case 'KeyB':
+        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !mapSystem.isFullMapOpen) audioSystem.honk(controllerManager.getActiveEntity());
+        break;
     }
   });
 
@@ -614,6 +637,7 @@ async function initApp() {
     if (streetDetails.update) streetDetails.update(cameraSystem.camera);
     lightingSystem.update(cameraSystem.currentPos);
     mapSystem.update();
+    audioSystem.update(dt, elapsed, cameraSystem.camera, lightingSystem.activePresetId === 'midnight');
     if (warmedUp) updateSceneCulling(cameraSystem.camera.position); // the warm-up frame draws every chunk
 
     // Render frame via TSL RenderPipeline (SSR + Bloom)
@@ -644,6 +668,7 @@ async function initApp() {
         console.log(`[init] ${initTimings.join(', ')}`);
         initTimings = null;
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        audioSystem.ready = true;
         setLoadingProgress(1);
       });
     }

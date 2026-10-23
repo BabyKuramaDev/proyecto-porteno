@@ -2013,7 +2013,11 @@ function createHighwayTraffic(scene, lanes) {
       const kind = h < 0.32 ? 'taxi' : h < 0.72 ? 'sedan' : 'suv';
       const col = new THREE.Color(PALETTES[kind][Math.floor(rand() * PALETTES[kind].length)]);
       // (float32 values, so update() can tell whether an instance slot's paint changes by comparing with the buffer)
-      const car = { lane, kind, u, v: lane.speed, acc: 0, seg: 0, col: [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)] };
+      const car = {
+        lane, kind, u, v: lane.speed, acc: 0, seg: 0,
+        placed: false, x: 0, y: -1000, z: 0, yaw: 0,
+        col: [Math.fround(col.r), Math.fround(col.g), Math.fround(col.b)]
+      };
       lane.cars.push(car);
       cars.push(car);
       counts[kind]++;
@@ -2194,6 +2198,16 @@ function createHighwayTraffic(scene, lanes) {
       const toEnd = lane.len - c.u;
       const dip = c.u < toEnd ? c.u : toEnd;
       const y = a.y + (b.y - a.y) * t - 2.4 * (1 - ease(dip));
+      let dYaw = lane.yaw[i + 1] - lane.yaw[i];
+      if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+      else if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+      const yaw = lane.yaw[i] + dYaw * t;
+      // Keep the current world pose available to audio, including cars behind the camera.
+      c.x = x;
+      c.y = y;
+      c.z = z;
+      c.yaw = yaw;
+      c.placed = true;
       const dx = x - cam.x;
       const dz = z - cam.z;
       const dy = y - cam.y;
@@ -2203,10 +2217,6 @@ function createHighwayTraffic(scene, lanes) {
       if (lod > 0 && dx * fwd.x + dz * fwd.z < -40) continue;
       if (y < -3.6) continue; // in the Battery Park Underpass, out of sight behind the portals' screens
       const slope = (b.y - a.y) / segLen + 2.4 * easeSlope(dip) * (c.u < toEnd ? 1 : -1);
-      let dYaw = lane.yaw[i + 1] - lane.yaw[i];
-      if (dYaw > Math.PI) dYaw -= Math.PI * 2;
-      else if (dYaw < -Math.PI) dYaw += Math.PI * 2;
-      const yaw = lane.yaw[i] + dYaw * t;
       euler.set(-Math.atan(slope), yaw, 0);
       q.setFromEuler(euler);
       m4.compose(pos.set(x, y, z), q, ONE);

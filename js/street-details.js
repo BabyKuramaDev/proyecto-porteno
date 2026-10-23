@@ -184,6 +184,7 @@ function buildStreetDetails(scene) {
   const streetLensMatrices = [];
   const streetBladeMatrices = [];
   const walkBoxMatrices = [];
+  const audioSignals = [];
   const lampHeadMatrices = [];
   const pedPostMatrices = [];
   const cobraLampSites = [];
@@ -273,6 +274,8 @@ function buildStreetDetails(scene) {
         dummy.scale.set(1, 1, 1);
         dummy.updateMatrix();
         walkBoxMatrices.push(dummy.matrix.clone());
+        // These panels share the avenue WALK phase; rejected/unplaced poles never become sound sources.
+        audioSignals.push({ x: dummy.position.x, y: dummy.position.y, z: dummy.position.z, isAvenue: true });
 
         // Cantilever horizontal mast arm reaching 6.5m over the avenue
         const armX = px + c.armDir * 3.25;
@@ -1200,7 +1203,7 @@ function buildStreetDetails(scene) {
   }
 
   scene.add(group);
-  return { group, footprints, signalClock, update };
+  return { group, footprints, signalClock, audioSignals, update };
 }
 
 export { buildStreetDetails };

@@ -165,17 +165,18 @@ async function initApp() {
   });
 
   // 5. TSL RenderPipeline with Half-Res Screen Space Reflections (SSRNode), Bloom & Filmic Toning
-  //    SSR skips pixels with zero metalness, so fading it out with distance spares the far facades
+  //    Fade out distant and matte surfaces so SSR spends its rays on visible glossy reflections.
   const scenePass = pass(scene, cameraSystem.camera);
   // The multisampled colour attachments (output, normal, metalRough) only need resolving, never storing: discarding
   // them spares the GPU writing 3 x 4 samples per pixel to memory every frame (transient, memoryless attachments where
   // the browser supports them). The multisampled depth stays stored: SSR reads it.
   scenePass.renderTarget.storeMultisampledColorBuffer = false;
   const ssrFade = smoothstep(360.0, 180.0, positionView.z.negate());
+  const maxSSRRoughness = 0.75;
   const sceneMRT = mrt({
     output: output,
     normal: normalView,
-    metalRough: vec2(metalness.mul(ssrFade), roughness)
+    metalRough: vec2(roughness.lessThan(maxSSRRoughness).select(metalness.mul(ssrFade), 0), roughness)
   });
   sceneMRT.setBlendMode('normal', new THREE.BlendMode(THREE.MaterialBlending));
   sceneMRT.setBlendMode('metalRough', new THREE.BlendMode(THREE.MaterialBlending));
@@ -195,11 +196,16 @@ async function initApp() {
   ssrPass.blurQuality = 1;
   ssrPass.maxDistance.value = 42;
   ssrPass.thickness.value = 0.85;
-  ssrPass.quality.value = 0.35;
+  // Fewer coarse steps, then refine detected hits to keep reflection edges precise.
+  ssrPass.quality.value = 0.25;
+  ssrPass.binaryRefine = true;
   ssrPass.intensity.value = 0.50;
   ssrPass.screenEdgeFadeBlack = true;
 
-  const colorGrade = createPostProcessing(renderer, scenePassColor, ssrPass);
+  // Roughness mip blur must not spread reflections back onto matte or nonreflective surfaces.
+  const reflectionMask = scenePassMetalRough.r.greaterThan(0).select(smoothstep(maxSSRRoughness, 0.55, scenePassMetalRough.g), 0);
+  const reflections = ssrPass.mul(reflectionMask);
+  const colorGrade = createPostProcessing(renderer, scenePassColor, reflections);
   const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)

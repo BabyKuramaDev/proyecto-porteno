@@ -184,6 +184,7 @@ function populationContext() {
     clamp: (x, lo, hi) => Math.max(lo, Math.min(hi, x)),
     hasView: true, camX: 0, camY: 10, camZ: 0, visible: () => true,
     focusX: 0, focusZ: 0, player: { active: false },
+    clock: 0,
     VEHICLE_SPAWN_DISTANCE: 250, PED_SPAWN_DISTANCE: 150, NEAR_RADIUS: 350,
     nearEdges: [], nearSignals: [], track: {}, KERB: 1.6, QUEUE_GAP: 0.62,
     atCurb: () => {}, laneClear: () => true,

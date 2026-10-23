@@ -101,6 +101,7 @@ class CityAudioSystem {
     this.sirens = new Map();
     this.events = [];
     this.states = new WeakMap();
+    this.conversations = new WeakMap();
     this.listener = { x: 0, y: 0, z: 0 };
     this.haveListener = false;
     this.accumulator = 0;
@@ -208,6 +209,7 @@ class CityAudioSystem {
     }
     for (const event of this.events) { event.voice.dispose(true); event.emitter.dispose(); }
     this.events.length = 0;
+    this.conversations = new WeakMap();
     this.states = new WeakMap();
     this.collisionPairs = new WeakMap();
     this.haveListener = false;
@@ -224,11 +226,36 @@ class CityAudioSystem {
       const hash = Math.sin(source.seed * 127.1 + 311.7) * 43758.5453;
       const variation = hash - Math.floor(hash);
       state = { variation, phase: source.phase, grounded: source.grounded, x: source.x, z: source.z,
-        talk: now + 3 + variation * 12, signal: now + variation,
-        horn: now + 8 + variation * 13, stopped: 0, stepSequence: 0, talkSequence: 0 };
+        signal: now + variation, horn: now + 8 + variation * 13, stopped: 0, stepSequence: 0 };
       this.states.set(source.id, state);
     }
     return state;
+  }
+
+  updateConversations(people, now) {
+    // Only the nearby pair's first member schedules speech. Shared turn state prevents overlapping replies.
+    for (const source of people) {
+      const pair = source.conversation;
+      if (!pair || pair.a !== source.id || pair.a.conversation !== pair || pair.b.conversation !== pair) continue;
+      const partner = people.find(person => person.id === pair.b && person.conversation === pair);
+      if (!partner || source.speed > 0.15 || partner.speed > 0.15) continue;
+      let state = this.conversations.get(pair);
+      if (!state) {
+        state = { reply: false, sequence: 0, next: now + 0.3 };
+        this.conversations.set(pair, state);
+      }
+      if (now < state.next) continue;
+      const speaker = state.reply ? partner : source;
+      if (this.emit('talk', speaker, { intensity: 0.3, seed: speaker.seed + state.sequence, voiceSeed: speaker.seed })) {
+        const voice = this.events[this.events.length - 1].voice;
+        const pause = 0.35 + (Math.sin(speaker.seed * 53 + state.sequence * 17.13) * 0.5 + 0.5) * 0.75;
+        state.next = voice.endTime + pause;
+        state.reply = !state.reply;
+        state.sequence++;
+      } else {
+        state.next = now + 0.5;
+      }
+    }
   }
 
   updatePool(pool, candidates, limit, now, dt, siren = false) {
@@ -398,6 +425,11 @@ class CityAudioSystem {
       if (now >= event.voice.endTime) {
         this.removeEvent(i);
       } else {
+        const pair = event.position.conversation;
+        if (pair && (pair.a.conversation !== pair || pair.b.conversation !== pair)) {
+          event.voice.dispose();
+          event.follow = false; // Fade at the old position if the meeting ended or a pedestrian was recycled.
+        }
         const source = event.follow && (sources.motors.find(s => s.id === event.id) || sources.people.find(s => s.id === event.id));
         if (source) Object.assign(event.position, source);
         event.emitter.update(event.position, this.listener, now, event.range);
@@ -426,13 +458,8 @@ class CityAudioSystem {
       }
       state.phase = source.phase; state.grounded = source.grounded;
       state.x = source.x; state.z = source.z;
-      if (!source.player && now >= state.talk) {
-        if (this.emit('talk', source, { intensity: 0.3, seed: source.seed + state.talkSequence++, voiceSeed: source.seed })) {
-          const pause = Math.sin(source.seed + state.talkSequence * 17.13) * 0.5 + 0.5;
-          state.talk = now + 8 + pause * 17;
-        }
-      }
     }
+    this.updateConversations(sources.people, now);
     for (const source of sources.signals) {
       const state = this.state(source, now);
       if (state.walk !== source.walk) {

@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
+const { loadModule } = require('./helpers/module.cjs');
 
 const source = readFileSync(join(__dirname, '../js/controllers.js'), 'utf8');
 
@@ -22,14 +22,25 @@ function eventTarget() {
 function keyboardHarness(nyc = {}) {
   const window = eventTarget();
   const document = { ...eventTarget(), hidden: false };
-  window.NYC = {
+  const config = {
     streetZ: () => 0,
     isTypingInField: (event) => ['INPUT', 'SELECT'].includes(event.target?.tagName),
     ...nyc
   };
-  vm.runInNewContext(source, { window, document });
+  const { ThirdPersonControllerManager } = loadModule(source, {
+    globals: { window, document },
+    imports: {
+      'three/webgpu': {},
+      './city-config.js': config,
+      './tsl-materials.js': {},
+      './actor-models.js': {},
+      './pedestrians.js': {},
+      './vehicle-lights.js': {},
+      './landmarks.js': {}
+    }
+  });
   // Exercise the production event handlers without constructing the scene's 3D models.
-  const controller = Object.create(window.NYC.ThirdPersonControllerManager.prototype);
+  const controller = Object.create(ThirdPersonControllerManager.prototype);
   controller.keys = Object.fromEntries(['forward', 'backward', 'left', 'right', 'up', 'down', 'boost'].map((action) => [action, false]));
   controller.bindKeyboard();
   return {

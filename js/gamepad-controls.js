@@ -1,5 +1,5 @@
-(function () {
-const { isTypingInField } = window.NYC;
+import { isTypingInField } from './city-config.js';
+
 const DEAD_ZONE = 0.15;
 const BUTTON_COUNT = 17;
 
@@ -163,5 +163,4 @@ class GamepadControls {
   }
 }
 
-Object.assign(window.NYC, { GamepadControls });
-})();
+export { GamepadControls };

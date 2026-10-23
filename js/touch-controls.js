@@ -1,4 +1,3 @@
-(function () {
 // Touch input stays separate from the keyboard, so releasing a finger never releases a held key.
 const DEAD_ZONE = 0.15;
 const MAX_RADIUS = 44;
@@ -166,5 +165,4 @@ class TouchControls {
   }
 }
 
-Object.assign(window.NYC, { TouchControls });
-})();
+export { TouchControls };

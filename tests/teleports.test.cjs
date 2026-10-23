@@ -5,9 +5,10 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const read = (path) => readFileSync(join(__dirname, '..', path), 'utf8');
-const context = vm.createContext({ window: { NYC: {} } });
-for (const path of ['js/nyc-geodata.js', 'js/city-config.js']) vm.runInContext(read(path), context);
-const { TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ } = context.window.NYC;
+let TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ;
+test.before(async () => {
+  ({ TELEPORT_LOCATIONS, LANDMARK_SITES, blockAt, nearestRoads, getIslandBoundsAtZ } = await import('../js/city-config.js'));
+});
 
 test('every teleport button has a destination on a real roadway inside Manhattan', () => {
   const buttons = [...read('index.html').matchAll(/data-teleport="([^"]+)"/g)].map((match) => match[1]);
@@ -41,7 +42,7 @@ test('preset and map teleports share arrival resets and mark the resolved landin
   const landed = { x: -305.7, z: 5210 };
   let map;
   const environment = {
-    window: { NYC: { TELEPORT_LOCATIONS } },
+    TELEPORT_LOCATIONS,
     controllerManager: {
       teleportActiveTo: (...args) => { calls.push(['teleport', ...args]); return landed; }
     },
@@ -50,6 +51,7 @@ test('preset and map teleports share arrival resets and mark the resolved landin
     cameraSystem: { resetForTeleport: () => calls.push(['camera']) },
     selectCamera: (...args) => calls.push(['selectCamera', ...args]),
     getLocationLabel: (x, z) => `${x}, ${z}`,
+    cityBlocks: { allBlocks: [] },
     trafficSystem: {},
     NYCMapSystem: class {
       constructor(options) { this.onTeleport = options.onTeleport; map = this; }

@@ -1,22 +1,14 @@
-(function () {
-// js/controllers.js
-// Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
-// for Third-Person Navigation:
-// 1. Person (Skinned Pedestrian: planted-footstep IK walk/run/jump, see pedestrians.js)
-// 2. Car (Aerodynamic Sculpted NYC Medallion Yellow Taxi with Sloped Windshield & Clearcoat)
-// 3. Cyclist (Sculpted Road Cyclist with Drop-Bar Frame & Aero Helmet)
-// 4. Helicopter (Manhattan Sightseeing Twin-Turbine Chopper)
-
-const { THREE } = window.NYC;
-const { ISLAND_BOUNDS, CENTRAL_PARK_BOUNDS, LANDMARK_SITES, getIslandBoundsAtZ, isTypingInField, blockAt, streetZ } = window.NYC;
-// Spawn on 5th Ave at 37th St, facing south down the avenue toward the Empire State Building (34th St)
-const SPAWN_Z = streetZ(37);
-const {
-  cityUniforms,
-  createCarPaintMaterial,
-  createContactShadowMaterial
-} = window.NYC;
-const {
+import * as THREE from 'three/webgpu';
+import {
+  ISLAND_BOUNDS,
+  CENTRAL_PARK_BOUNDS,
+  getIslandBoundsAtZ,
+  isTypingInField,
+  blockAt,
+  streetZ
+} from './city-config.js';
+import { cityUniforms, createCarPaintMaterial, createContactShadowMaterial } from './tsl-materials.js';
+import {
   BODY_SPECS,
   buildCarGeometry,
   buildCarSidePatch,
@@ -26,9 +18,22 @@ const {
   buildHelicopterMainRotorGeometry,
   buildHelicopterTailRotorGeometry,
   createLoftedHelicopterMaterial
-} = window.NYC;
-const { PersonCrowd, PersonRig } = window.NYC;
-const { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } = window.NYC;
+} from './actor-models.js';
+import { PersonCrowd, PersonRig } from './pedestrians.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import { bryantParkLawn } from './landmarks.js';
+
+// js/controllers.js
+// Sculpted, non-blocky GTA 6-style 3D models, animations, and physics controllers
+// for Third-Person Navigation:
+// 1. Person (Skinned Pedestrian: planted-footstep IK walk/run/jump, see pedestrians.js)
+// 2. Car (Aerodynamic Sculpted NYC Medallion Yellow Taxi with Sloped Windshield & Clearcoat)
+// 3. Cyclist (Sculpted Road Cyclist with Drop-Bar Frame & Aero Helmet)
+// 4. Helicopter (Manhattan Sightseeing Twin-Turbine Chopper)
+
+// Spawn on 5th Ave at 37th St, facing south down the avenue toward the Empire State Building (34th St)
+const SPAWN_Z = streetZ(37);
+
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
 
@@ -740,7 +745,7 @@ class ThirdPersonControllerManager {
       return 1.24;
     }
     // Inside Bryant Park's Great Lawn (west of the New York Public Library, 40th-42nd St)
-    const lawn = window.NYC.bryantParkLawn;
+    const lawn = bryantParkLawn;
     if (lawn && x > lawn.minX && x < lawn.maxX && z > lawn.minZ && z < lawn.maxZ) {
       return lawn.top;
     }
@@ -1197,5 +1202,4 @@ class ThirdPersonControllerManager {
   }
 }
 
-Object.assign(window.NYC, { ThirdPersonControllerManager });
-})();
+export { ThirdPersonControllerManager };

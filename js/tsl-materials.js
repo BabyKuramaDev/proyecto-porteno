@@ -1,16 +1,5 @@
-(function () {
-// js/tsl-materials.js
-// Photorealistic TSL (Three.js Shading Language) procedural shaders for Three.js r186 WebGPURenderer
-// Incorporating techniques from three.js webgpu_generator_city.html:
-// - Mikkelsen Surface-Gradient Hardware Derivative Bump Mapping (bumpNormal)
-// - Filter-Width Anti-Aliased Procedural Markings & Mortar (lineAA & gridLine via fwidth)
-// - True 3D Slab Ray-Marched Room & Retail Storefront Interiors (walls, ceiling lamps, floors, rugs, doors, art, shelves, curtains)
-// - Window Air-Conditioner Units with Louver Relief & Grimy Soda-Lime Window Glazing
-// - Crown-Sphere Foliage Normal Relief, Radial Interior Canopy AO & Cast-Iron Tree Grate Shading
-// - Occlusion-Aware Urban Canyon Global Illumination (aoNode + Warm Terracotta/Limestone Bounce)
-
-const { THREE } = window.NYC;
-const {
+import * as THREE from 'three/webgpu';
+import {
   Fn,
   float,
   vec2,
@@ -61,8 +50,30 @@ const {
   texture,
   rotateUV,
   mrt,
-  If
-} = window.NYC.TSL;
+  If,
+  sqrt,
+  specularColor,
+  specularColorBlended,
+  specularF90
+} from 'three/tsl';
+import {
+  CENTRAL_PARK_BOUNDS,
+  ISLAND_BOUNDS,
+  getIslandBoundsAtZ,
+  NJ_SHORELINE_POLYGON,
+  LONG_ISLAND_POLYGONS,
+  streetZ
+} from './city-config.js';
+
+// js/tsl-materials.js
+// Photorealistic TSL (Three.js Shading Language) procedural shaders for Three.js r186 WebGPURenderer
+// Incorporating techniques from three.js webgpu_generator_city.html:
+// - Mikkelsen Surface-Gradient Hardware Derivative Bump Mapping (bumpNormal)
+// - Filter-Width Anti-Aliased Procedural Markings & Mortar (lineAA & gridLine via fwidth)
+// - True 3D Slab Ray-Marched Room & Retail Storefront Interiors (walls, ceiling lamps, floors, rugs, doors, art, shelves, curtains)
+// - Window Air-Conditioner Units with Louver Relief & Grimy Soda-Lime Window Glazing
+// - Crown-Sphere Foliage Normal Relief, Radial Interior Canopy AO & Cast-Iron Tree Grate Shading
+// - Occlusion-Aware Urban Canyon Global Illumination (aoNode + Warm Terracotta/Limestone Bounce)
 
 // Shared live uniforms controlled by lighting / time-of-day presets
 const cityUniforms = {
@@ -157,7 +168,7 @@ const filteredPulse = Fn(([x, a, b, w]) => {
 const canyonSkyAONode = Fn(() => {
   const wp = positionWorld;
   // Open sky inside Central Park (city-config.js CENTRAL_PARK_BOUNDS, 5th Ave to Central Park West, 59th to 110th St)
-  const cp = window.NYC.CENTRAL_PARK_BOUNDS;
+  const cp = CENTRAL_PARK_BOUNDS;
   const inParkX = smoothstep(cp.minX - 10.0, cp.minX + 20.0, wp.x).mul(float(1.0).sub(smoothstep(cp.maxX - 20.0, cp.maxX + 10.0, wp.x)));
   const inParkZ = smoothstep(cp.minZ - 10.0, cp.minZ + 30.0, wp.z).mul(float(1.0).sub(smoothstep(cp.maxZ - 30.0, cp.maxZ + 10.0, wp.z)));
   const inPark = inParkX.mul(inParkZ);
@@ -1195,117 +1206,6 @@ function createCarPaintMaterial(baseHex = 0xffc218) {
   })();
 
   _carPaintCache.set(baseHex, mat);
-  return mat;
-}
-
-/**
- * Lush Organic NYC Street & Park Tree Foliage TSL Material (ported from StreetTreeGenerator.js)
- * Features:
- * - Works with Crown-Sphere Blended Vertex Normals (`aCrownDist` attribute for radial interior canopy AO)
- * - Sky-Facing Lift (`normalWorldGeometry.y * 0.5 + 0.5`) & Per-Tree Species Hue Drift
- * - Hardware Derivative `bumpNormal` Leaf-Tuft Relief with Grazing-Angle Fade
- * - Gentle Per-Tree Phase-Shifted Breeze Flutter
- */
-function createFoliageMaterial() {
-  const mat = new THREE.MeshStandardNodeMaterial({
-    metalness: 0.0,
-    roughness: 0.82
-  });
-
-  mat.aoNode = canyonSkyAONode();
-
-  // Gentle breeze flutter + subtle tuft silhouette displacement
-  mat.positionNode = Fn(() => {
-    const wp = positionWorld;
-    const tuft = noise2D(wp.xz.mul(2.2).add(vec2(wp.y.mul(1.6), 0.0))).sub(0.5).mul(0.18);
-    const phase = wp.x.mul(0.31).add(wp.z.mul(0.23));
-    const breezeX = sin(time.mul(0.95).add(phase)).mul(0.055);
-    const breezeZ = cos(time.mul(0.82).add(phase.mul(1.3))).mul(0.045);
-    const flutter = sin(time.mul(2.8).add(wp.x.mul(1.8)).add(wp.y.mul(2.2))).mul(0.018);
-    return positionLocal.add(normalLocal.mul(tuft.add(flutter))).add(vec3(breezeX, float(0.0), breezeZ));
-  })();
-
-  const cGreenDeep = color(0x2c4a1b);
-  const cGreenSun = color(0x5d7e32);
-  const cOlivePatch = color(0x75822e);
-  const cAutumnGold = color(0x9a7b2c);
-
-  mat.colorNode = Fn(() => {
-    const wp = positionWorld;
-    const crownDist = attribute('aCrownDist', 'float');
-
-    // Radial interior canopy self-shadowing (from StreetTreeGenerator.js):
-    // leaves darken toward the crown core where a real canopy swallows light, and brighten at the rim
-    const radialAO = smoothstep(0.08, 1.02, crownDist).mul(0.48).add(0.52);
-
-    // Multi-scale leaf tuft & sparkle field
-    const patch = noise2D(wp.xz.mul(0.45).add(vec2(wp.y.mul(0.35), 0.0)));
-    const tufts = noise2D(wp.xz.mul(2.4).add(vec2(wp.y.mul(2.1), 7.3)))
-      .mul(0.65)
-      .add(noise2D(wp.xy.mul(5.2)).mul(0.35));
-    const sparkle = noise2D(wp.yz.mul(9.5));
-
-    // Per-tree species variation (London Plane emerald, Honey Locust olive, early Autumn gold)
-    const treeSpecies = noise2D(wp.xz.mul(0.06));
-    const autumnTint = smoothstep(0.66, 0.88, treeSpecies).mul(0.55);
-
-    // Sky-facing lift (from StreetTreeGenerator.js)
-    const skyLift = clamp(normalWorldGeometry.y.mul(0.5).add(0.5), 0.0, 1.0);
-    const leafBase = mix(cGreenDeep, cGreenSun, skyLift);
-    const leafVaried = mix(leafBase, cOlivePatch, patch.mul(0.52));
-    const leafTinted = mix(leafVaried, cAutumnGold, autumnTint);
-
-    const leafLit = leafTinted
-      .mul(tufts.mul(0.36).add(0.74))
-      .mul(sparkle.mul(0.22).add(0.88));
-
-    return leafLit.mul(radialAO);
-  })();
-
-  mat.roughnessNode = Fn(() => {
-    const wp = positionWorld;
-    const sparkle = noise2D(wp.yz.mul(9.5));
-    return float(0.78).add(sparkle.mul(0.14));
-  })();
-
-  // Screen-space derivative bumpNormal on leaf tufts with grazing-angle fade (from StreetTreeGenerator.js)
-  mat.normalNode = Fn(() => {
-    const wp = positionWorld;
-    const tufts = noise2D(wp.xz.mul(2.4).add(vec2(wp.y.mul(2.1), 7.3)))
-      .mul(0.65)
-      .add(noise2D(wp.xy.mul(5.2)).mul(0.35));
-    const grazingFade = smoothstep(0.08, 0.35, abs(dot(normalView, positionViewDirection)));
-    return bumpNormal(tufts.mul(0.065).mul(grazingFade));
-  })();
-
-  return mat;
-}
-
-/**
- * Tree Trunk & Flared Root Collar Bark TSL Material with Vertical Ridge `bumpNormal`
- * (Ported from StreetTreeGenerator.js)
- */
-function createTreeBarkMaterial() {
-  const mat = new THREE.MeshStandardNodeMaterial({
-    metalness: 0.0,
-    roughness: 0.88
-  });
-
-  mat.aoNode = canyonSkyAONode();
-
-  mat.colorNode = Fn(() => {
-    const wp = positionWorld;
-    const ridge = float(1.0).sub(abs(noise2D(vec2(wp.x.add(wp.z).mul(8.5), wp.y.mul(1.5))).sub(0.5).mul(2.0)));
-    return mix(color(0x463627), color(0x6c5b44), smoothstep(0.45, 0.95, ridge).mul(0.72));
-  })();
-
-  mat.normalNode = Fn(() => {
-    const wp = positionWorld;
-    const ridge = float(1.0).sub(abs(noise2D(vec2(wp.x.add(wp.z).mul(8.5), wp.y.mul(1.5))).sub(0.5).mul(2.0)));
-    const grazingFade = smoothstep(0.08, 0.35, abs(dot(normalView, positionViewDirection)));
-    return bumpNormal(ridge.mul(0.018).mul(grazingFade));
-  })();
-
   return mat;
 }
 
@@ -2552,14 +2452,13 @@ const waterBoxCover = Fn(([x, a, b, s]) => {
  * - Park lakes, the Reservoir & fountains (well above the harbour) get finer, calmer ripples and a greener, duller body.
  */
 function createWaterMaterial() {
-  const { sqrt } = window.NYC.TSL;
   const mat = new THREE.MeshStandardNodeMaterial({
     metalness: 0.0,
     roughness: 0.25
   });
 
   const waveTex = getWaterWaveTexture();
-  const harbourY = window.NYC.ISLAND_BOUNDS ? window.NYC.ISLAND_BOUNDS.waterLevel : -2.2;
+  const harbourY = ISLAND_BOUNDS ? ISLAND_BOUNDS.waterLevel : -2.2;
   const pond = smoothstep(harbourY + 1.0, harbourY + 2.0, positionWorld.y);
 
   // [tile size (m), rotation (rad), RMS slope]: incommensurate scales & angles so no pattern repeats
@@ -2629,14 +2528,14 @@ function createWaterMaterial() {
   // wave slopes (vertically) & the foreshortened lateral slopes (horizontally), so distant lights smear into streaks.
   // The boxes & shorelines come from the real geography (city-config.js): [minX, minZ, maxX, maxZ] slabs inscribed in
   // the island ~1.1 km apart, the NJ shore west of it & the Brooklyn / Queens shore east of it every 900 m of z
-  const N = window.NYC;
-  const IB = N.ISLAND_BOUNDS;
+
+  const IB = ISLAND_BOUNDS;
   const MANHATTAN_BOXES = [];
   for (let z0 = IB.minZ; z0 < IB.maxZ - 1; z0 += 1140) {
     const z1 = Math.min(IB.maxZ, z0 + 1140);
     let x0 = -Infinity, x1 = Infinity;
     for (let z = z0; z <= z1 + 0.1; z += (z1 - z0) / 8) {
-      const s = N.getIslandBoundsAtZ(z);
+      const s = getIslandBoundsAtZ(z);
       x0 = Math.max(x0, s.westX + 40);
       x1 = Math.min(x1, s.eastX - 40);
     }
@@ -2654,9 +2553,9 @@ function createWaterMaterial() {
   };
   const westShore = [], eastShore = [];
   for (let z = IB.minZ - 900; z <= IB.maxZ + 900; z += 900) {
-    const s = N.getIslandBoundsAtZ(Math.max(IB.minZ, Math.min(IB.maxZ, z)));
-    const w = crossings([N.NJ_SHORELINE_POLYGON], z).filter((x) => x < s.westX - 150);
-    const e = crossings(N.LONG_ISLAND_POLYGONS || [], z).filter((x) => x > s.eastX + 100);
+    const s = getIslandBoundsAtZ(Math.max(IB.minZ, Math.min(IB.maxZ, z)));
+    const w = crossings([NJ_SHORELINE_POLYGON], z).filter((x) => x < s.westX - 150);
+    const e = crossings(LONG_ISLAND_POLYGONS || [], z).filter((x) => x > s.eastX + 100);
     westShore.push([z, w.length ? Math.max(...w) : s.westX - 1300]);
     eastShore.push([z, e.length ? Math.min(...e) : s.eastX + 900]);
   }
@@ -2680,8 +2579,8 @@ function createWaterMaterial() {
     }
     return terms[0];
   };
-  const CPB = N.CENTRAL_PARK_BOUNDS;
-  const zSt = (n) => N.streetZ(n);
+  const CPB = CENTRAL_PARK_BOUNDS;
+  const zSt = (n) => streetZ(n);
   mat.emissiveNode = Fn(() => {
     const night = smoothstep(0.55, 1.35, cityUniforms.uInteriorGlow);
     const P = positionWorld.xz;
@@ -2808,7 +2707,6 @@ function createParkLawnMaterial(isMeadow = false) {
 
   // Grass is a canopy of blades that shadow each other, not a flat dielectric: at grazing angles a plain F0 = 0.04 /
   // F90 = 1 Fresnel mirrors the sky and turns lawns teal, so weaken the specular and cap its grazing rise
-  const { specularColor, specularColorBlended, specularF90 } = window.NYC.TSL;
   mat.setupSpecular = function () {
     specularColor.assign(vec3(0.025));
     specularColorBlended.assign(vec3(0.025));
@@ -3083,48 +2981,6 @@ function createContactShadowMaterial() {
 }
 
 /**
- * Projected Dual-Lobe LED Headlight Road Cone TSL Material
- */
-function createHeadlightBeamMaterial() {
-  const mat = new THREE.MeshBasicNodeMaterial({
-    transparent: true,
-    depthWrite: false,
-    fog: false,
-    blending: THREE.AdditiveBlending
-  });
-  mat.mrtNode = _transparentEffectMRT;
-
-  mat.colorNode = Fn(() => color(0xfff5dc))();
-
-  mat.opacityNode = Fn(() => {
-    const p = vec2(1.0, 1.0).sub(uv());
-    // p.y = 0 right under the front bumper headlamps, p.y = 1 at far end of road cone
-    const distFade = smoothstep(0.0, 0.035, p.y).mul(pow(clamp(float(1.0).sub(p.y), 0.0, 1.0), 1.65));
-    const edgeFadeX = smoothstep(0.0, 0.14, p.x).mul(smoothstep(1.0, 0.86, p.x));
-
-    // Dual headlamp cones originating at x = 0.5 +- 0.185 (~+-0.63m) and fanning outward
-    const fanOffset = float(0.185).add(p.y.mul(0.045));
-    const beamHalfWidth = float(0.065).add(p.y.mul(0.20));
-
-    const leftDist = abs(p.x.sub(float(0.5).sub(fanOffset)));
-    const rightDist = abs(p.x.sub(float(0.5).add(fanOffset)));
-
-    const leftBeam = pow(smoothstep(beamHalfWidth, 0.0, leftDist), 1.25);
-    const rightBeam = pow(smoothstep(beamHalfWidth, 0.0, rightDist), 1.25);
-    // Soft merged mid-field cone fill where the two beams overlap ahead of the vehicle
-    const centerFill = smoothstep(0.10, 0.38, p.y).mul(
-      pow(smoothstep(float(0.18).add(p.y.mul(0.22)), 0.0, abs(p.x.sub(0.5))), 1.4)
-    ).mul(0.45);
-
-    const combinedCone = clamp(max(leftBeam, rightBeam).add(centerFill), 0.0, 1.0);
-    const nightBoost = clamp(cityUniforms.uInteriorGlow.mul(0.65), 0.10, 0.88);
-    return combinedCone.mul(distFade).mul(edgeFadeX).mul(nightBoost).mul(0.30);
-  })();
-
-  return mat;
-}
-
-/**
  * Car lamp flares for distant traffic (instanced sprites on a unit quad): a soft round glow with a hot core per lamp,
  * placed and sized per instance (`flarePos` = x, y, z, world size) and tinted (`flareCol` = rgb (+ an unused w, so
  * the attribute needs no padding on upload), already including the lamp's visibility from the camera), lit only at
@@ -3152,5 +3008,33 @@ function createCarFlareMaterial() {
   return mat;
 }
 
-Object.assign(window.NYC, { cityUniforms, WALL_KINDS, createCurtainWallMaterial, createPreWarBuildingMaterial, createFacadeBoxes, createChryslerCrownMaterial, createCarPaintMaterial, createFoliageMaterial, createTreeBarkMaterial, createTreeMaterial, createParkPavingMaterial, createParkWallMaterial, createIronFenceMaterial, createParkLampGlobeMaterial, createParkLampPoolMaterial, createTunnelShadeMaterial, createTktsStepMaterial, createMarbleAshlarMaterial, createTreeGrateMaterial, createRoadSurfaceMaterial, createRoadPaintMaterial, createSidewalkMaterial, createCurbMaterial, createBillboardMaterial, createWaterMaterial, createParkLawnMaterial, createSteamMaterial, createGodRayMaterial, createContactShadowMaterial, createHeadlightBeamMaterial, createCarFlareMaterial });
-})();
+export {
+  cityUniforms,
+  WALL_KINDS,
+  createCurtainWallMaterial,
+  createPreWarBuildingMaterial,
+  createFacadeBoxes,
+  createChryslerCrownMaterial,
+  createCarPaintMaterial,
+  createTreeMaterial,
+  createParkPavingMaterial,
+  createParkWallMaterial,
+  createIronFenceMaterial,
+  createParkLampGlobeMaterial,
+  createParkLampPoolMaterial,
+  createTunnelShadeMaterial,
+  createTktsStepMaterial,
+  createMarbleAshlarMaterial,
+  createTreeGrateMaterial,
+  createRoadSurfaceMaterial,
+  createRoadPaintMaterial,
+  createSidewalkMaterial,
+  createCurbMaterial,
+  createBillboardMaterial,
+  createWaterMaterial,
+  createParkLawnMaterial,
+  createSteamMaterial,
+  createGodRayMaterial,
+  createContactShadowMaterial,
+  createCarFlareMaterial
+};

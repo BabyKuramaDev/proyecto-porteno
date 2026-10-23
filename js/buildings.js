@@ -1,19 +1,6 @@
-(function () {
-// js/buildings.js
-// Generates dense, architecturally varied Manhattan city blocks across the entire island
-// indexed by a spatial 2D Quadtree (ManhattanQuadtree) that dynamically streams high-detail
-// architectural elements (carved stone cornices/ledges, rooftop cedar water towers, mechanical
-// penthouses, wrought-iron fire escapes, retail awnings, illuminated storefront signs, and
-// sidewalk scaffolding sheds) around the player anywhere in Manhattan.
-//
-// Blocks are divided into lots the way Manhattan's are: apartment houses on the avenue corners, rows of
-// brownstones / tenements along the side streets around a "donut" of rear yards, lofts and office buildings sharing
-// party walls, towers rising from full-lot podiums. Footprints are rectilinear plans (light courts, U / E / H / ring
-// courtyards, dumbbell tenements, notched, stepped & cruciform towers) built as unions of non-overlapping boxes.
-
-const { THREE } = window.NYC;
-const { mergeGeometries } = window.NYC.Addons;
-const {
+import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
   Fn,
   float,
   vec2,
@@ -36,8 +23,8 @@ const {
   length,
   mx_noise_float,
   mx_worley_noise_float
-} = window.NYC.TSL;
-const {
+} from 'three/tsl';
+import {
   ALL_AVENUES,
   CENTRAL_PARK_BOUNDS,
   ISLAND_BOUNDS,
@@ -47,14 +34,28 @@ const {
   avenueX,
   getBroadwayX,
   EAST_RIVER_BRIDGES
-} = window.NYC;
-const {
+} from './city-config.js';
+import {
   createPreWarBuildingMaterial,
   createCurtainWallMaterial,
   createFacadeBoxes,
   createBillboardMaterial,
   WALL_KINDS
-} = window.NYC;
+} from './tsl-materials.js';
+import { GEO } from './nyc-geodata.js';
+import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './city-grid.js';
+
+// js/buildings.js
+// Generates dense, architecturally varied Manhattan city blocks across the entire island
+// indexed by a spatial 2D Quadtree (ManhattanQuadtree) that dynamically streams high-detail
+// architectural elements (carved stone cornices/ledges, rooftop cedar water towers, mechanical
+// penthouses, wrought-iron fire escapes, retail awnings, illuminated storefront signs, and
+// sidewalk scaffolding sheds) around the player anywhere in Manhattan.
+//
+// Blocks are divided into lots the way Manhattan's are: apartment houses on the avenue corners, rows of
+// brownstones / tenements along the side streets around a "donut" of rear yards, lofts and office buildings sharing
+// party walls, towers rising from full-lot podiums. Footprints are rectilinear plans (light courts, U / E / H / ring
+// courtyards, dumbbell tenements, notched, stepped & cruciform towers) built as unions of non-overlapping boxes.
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -388,7 +389,7 @@ function buildCityBlocks(scene) {
   // Times Square's bowtie: the Broadway plaza strip (city-config.js GEO.plazas) and 7th Avenue's roadway between 47th
   // and 42nd St. Lots fronting it rise as sheer walls (flushTower) and every podium wall facing it carries billboards
   const TS = (() => {
-    const def = (window.NYC.GEO.plazas || []).find((d) => d.name === 'Times Square');
+    const def = (GEO.plazas || []).find((d) => d.name === 'Times Square');
     const ave7 = ALL_AVENUES.find((a) => a.id === '7');
     if (!def || !ave7) return null;
     const [ax, az] = def.a;
@@ -433,7 +434,7 @@ function buildCityBlocks(scene) {
     }
   }
   // ... nor under the South Street Viaduct and its Battery Park Underpass portal (laid out by city-grid.js)
-  for (const o of (window.NYC.fdrViaduct && window.NYC.fdrViaduct.boxes) || []) bridgeCorridors.push(o);
+  for (const o of (fdrViaduct && fdrViaduct.boxes) || []) bridgeCorridors.push(o);
   // Separating-axis test of the rect [x0, x1] x [z0, z1] (of the current frame) against every corridor box
   function hitsBridgeCorridor(x0, x1, z0, z1) {
     const hx = (x1 - x0) * 0.5;
@@ -2015,10 +2016,10 @@ function buildCityBlocks(scene) {
   // B6. Narrow leftover slabs no building fits on (8-26 m wide: clipped short by the shore highways or cut by Broadway)
   //     become sitting areas: a row or two of honey locusts & planes in tree pits (planted by street-details.js)
   {
-    const plazas = window.NYC.pavedPlazaRects || [];
-    const sites = window.NYC.parkTreeSites;
+    const plazas = pavedPlazaRects || [];
+    const sites = parkTreeSites;
     const hit = (r, x0, x1, z0, z1) => r.minX < x1 && r.maxX > x0 && r.minZ < z1 && r.maxZ > z0;
-    for (const s of (sites && window.NYC.sidewalkBlocks) || []) {
+    for (const s of (sites && sidewalkBlocks) || []) {
       const x0 = s.cx - s.w / 2;
       const x1 = s.cx + s.w / 2;
       const z0 = s.cz - s.d / 2;
@@ -2396,7 +2397,6 @@ function buildCityBlocks(scene) {
   // ============================================================================
   let lastStreamX = Infinity;
   let lastStreamZ = Infinity;
-  let activeBlockCount = 0;
   const STREAM_RADIUS = 560; // High-detail architectural radius around player in meters
 
   // Streaming rewrites only the active prefix; unused pool capacity need not cross the GPU queue.
@@ -2424,7 +2424,6 @@ function buildCityBlocks(scene) {
       const db = (b.cx - focusX) * (b.cx - focusX) + (b.cz - focusZ) * (b.cz - focusZ);
       return da - db;
     });
-    activeBlockCount = nearbyBlocks.length;
     activeAwnings.length = 0;
 
     let corniceCount = 0;
@@ -2556,7 +2555,7 @@ function buildCityBlocks(scene) {
   }
 
   function updateLights(camera) {
-    const glow = window.NYC.uInteriorGlow ? window.NYC.uInteriorGlow.value : 0.85;
+    const glow = 0.85;
     const glowFactor = Math.max(0, (glow - 0.15) / 0.90);
     if (!camera || glowFactor <= 0.001) {
       for (let i = 0; i < STORE_SPOT_POOL; i++) {
@@ -2627,10 +2626,8 @@ function buildCityBlocks(scene) {
     quadtree,
     allBlocks,
     update,
-    updateLights,
-    getActiveBlockCount: () => activeBlockCount
+    updateLights
   };
 }
 
-Object.assign(window.NYC, { ManhattanQuadtree, buildCityBlocks });
-})();
+export { ManhattanQuadtree, buildCityBlocks };

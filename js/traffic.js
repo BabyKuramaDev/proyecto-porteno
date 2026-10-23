@@ -1,25 +1,9 @@
-(function () {
-// js/traffic.js
-// Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
-// - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 32 MTA buses keep to their lanes and follow the vehicle
-//   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,
-//   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
-//   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
-// - 340 pedestrians stroll the sidewalks and cross at signalized crosswalks on the WALK signal.
-// - Vehicles and pedestrians are only ever moved while out of the camera's view, so nothing pops in or out.
-// - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks).
-
-const { THREE, buildRoadNetwork, signalPhase, walkSignal } = window.NYC;
-const {
-  cityUniforms,
-  createContactShadowMaterial,
-  createCarFlareMaterial,
-  HEADLIGHTS,
-  createVehicleHeadlight,
-  placeVehicleHeadlight
-} = window.NYC;
-const {
-  CAR_PARTS,
+import * as THREE from 'three/webgpu';
+import { buildRoadNetwork } from './road-network.js';
+import { signalPhase, walkSignal, blockAt } from './city-config.js';
+import { cityUniforms, createContactShadowMaterial, createCarFlareMaterial } from './tsl-materials.js';
+import { HEADLIGHTS, createVehicleHeadlight, placeVehicleHeadlight } from './vehicle-lights.js';
+import {
   BODY_SPECS,
   BUS_SPEC,
   buildCarGeometry,
@@ -33,9 +17,18 @@ const {
   buildBusWheelGeo,
   createBusWheelMaterial,
   createLoftedBusMaterial
-} = window.NYC;
-const { PersonCrowd, PersonRig } = window.NYC;
-const { mergeGeometries } = window.NYC.Addons;
+} from './actor-models.js';
+import { PersonCrowd, PersonRig } from './pedestrians.js';
+
+// js/traffic.js
+// Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
+// - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 32 MTA buses keep to their lanes and follow the vehicle
+//   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,
+//   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
+//   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
+// - 340 pedestrians stroll the sidewalks and cross at signalized crosswalks on the WALK signal.
+// - Vehicles and pedestrians are only ever moved while out of the camera's view, so nothing pops in or out.
+// - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks).
 
 const NUM_CARS = 200;
 const NUM_BUSES = 32;
@@ -1360,7 +1353,6 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // Along the sidewalk on either side of edge e, between its crosswalks. Grid edges test the strip in one box against
   // the sidewalk rectangles; centreline streets (any direction, where those rectangles only roughly fill the sidewalks)
   // every 3 m, on the curb island (city-config.js blockAt) and clear of obstacles
-  const { blockAt } = window.NYC;
   function sidewalkTrack(e) {
     const off = (Math.random() < 0.5 ? 1 : -1) * (e.half + 1.4 + Math.random() * 2.6);
     const ax = e.sx + e.rx * off;
@@ -2333,5 +2325,4 @@ function createHighwayTraffic(scene, lanes) {
   return { group, update, cars, lanes };
 }
 
-Object.assign(window.NYC, { createTrafficSystem, createHighwayTraffic });
-})();
+export { createTrafficSystem, createHighwayTraffic };

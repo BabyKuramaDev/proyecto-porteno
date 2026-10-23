@@ -1,22 +1,12 @@
-(function () {
-// js/actor-models.js
-// Realistic 3D Lofted Vehicle Geometry + TSL Materials (the skinned, animated people are in pedestrians.js)
-// Ported and adapted from Three.js webgpu_generator_city:
-// - LoftGeometry.js (skinning 3D cross-section rings with arc-length UVs, smooth seam normals & Newell caps)
-// - CarGenerator.js (lofted sedan/taxi/SUV/NYPD bodies with circular wheel arches, curved cabin windscreens,
-//   crowned roofs, LatheGeometry tyres & recessed 5-spoke alloy wheels, side mirrors, roof signs & TSL fascia/seams)
-
-const { THREE, cityUniforms } = window.NYC;
-const {
+import * as THREE from 'three/webgpu';
+import { cityUniforms } from './tsl-materials.js';
+import {
   Fn,
   float,
   vec2,
-  vec3,
   color,
   attribute,
-  uv,
   sin,
-  cos,
   abs,
   fract,
   min,
@@ -30,8 +20,15 @@ const {
   uniform,
   time,
   instanceIndex
-} = window.NYC.TSL;
-const { mergeGeometries, mergeVertices } = window.NYC.Addons;
+} from 'three/tsl';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// js/actor-models.js
+// Realistic 3D Lofted Vehicle Geometry + TSL Materials (the skinned, animated people are in pedestrians.js)
+// Ported and adapted from Three.js webgpu_generator_city:
+// - LoftGeometry.js (skinning 3D cross-section rings with arc-length UVs, smooth seam normals & Newell caps)
+// - CarGenerator.js (lofted sedan/taxi/SUV/NYPD bodies with circular wheel arches, curved cabin windscreens,
+//   crowned roofs, LatheGeometry tyres & recessed 5-spoke alloy wheels, side mirrors, roof signs & TSL fascia/seams)
 
 const _vector = new THREE.Vector3();
 const _down = new THREE.Vector3(0, -1, 0);
@@ -1211,7 +1208,6 @@ function createLoftedCarMaterial(spec, fixedColorHex = null) {
   return mat;
 }
 
-
 // ============================================================================
 // 3. TUBE SECTIONS ALONG A POLYLINE (the helicopter's skids; the people are built in pedestrians.js)
 // ============================================================================
@@ -1948,5 +1944,26 @@ function createLoftedHelicopterMaterial() {
   return mat;
 }
 
-Object.assign(window.NYC, { CAR_PARTS, BODY_SPECS, carLayout, carBodyHalfWidthAt, buildCarSidePatch, buildSteerableWheelGeo, buildCarGeometry, buildCarProxyGeometry, createLoftedCarMaterial, buildLightbarGeometry, createLightbarMaterial, BUS_SPEC, buildLoftedBusBodyGeometry, buildBusSignGeometry, buildBusWheelGeo, createBusWheelMaterial, createLoftedBusMaterial, buildHelicopterBodyGeometry, buildHelicopterMainRotorGeometry, buildHelicopterTailRotorGeometry, createLoftedHelicopterMaterial });
-})();
+export {
+  CAR_PARTS,
+  BODY_SPECS,
+  carLayout,
+  carBodyHalfWidthAt,
+  buildCarSidePatch,
+  buildSteerableWheelGeo,
+  buildCarGeometry,
+  buildCarProxyGeometry,
+  createLoftedCarMaterial,
+  buildLightbarGeometry,
+  createLightbarMaterial,
+  BUS_SPEC,
+  buildLoftedBusBodyGeometry,
+  buildBusSignGeometry,
+  buildBusWheelGeo,
+  createBusWheelMaterial,
+  createLoftedBusMaterial,
+  buildHelicopterBodyGeometry,
+  buildHelicopterMainRotorGeometry,
+  buildHelicopterTailRotorGeometry,
+  createLoftedHelicopterMaterial
+};

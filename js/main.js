@@ -1,38 +1,26 @@
-(function () {
+import * as THREE from 'three/webgpu';
+import { pass, mrt, output, normalView, positionView, metalness, roughness, vec2, smoothstep } from 'three/tsl';
+import { ssr } from 'three/addons/tsl/display/SSRNode.js';
+import { createPostProcessing } from './post-processing.js';
+import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
+import { getLocationLabel, isTypingInField, ROADS, NYC_LANDMARKS, TELEPORT_LOCATIONS } from './city-config.js';
+import { buildCityGrid } from './city-grid.js';
+import { buildBoroughs } from './boroughs.js';
+import { buildLandmarks } from './landmarks.js';
+import { buildCityBlocks } from './buildings.js';
+import { buildStreetDetails } from './street-details.js';
+import { createTrafficSystem, createHighwayTraffic } from './traffic.js';
+import { buildRoadPaint } from './road-paint.js';
+import { ThirdPersonControllerManager } from './controllers.js';
+import { TouchControls } from './touch-controls.js';
+import { GamepadControls } from './gamepad-controls.js';
+import { CameraSystem, CAMERA_PRESETS } from './cameras.js';
+import { LightingSystem } from './lighting.js';
+import { NYCMapSystem } from './nyc-map.js';
+import { setupSceneCulling, updateSceneCulling } from './scene-culling.js';
+
 // js/main.js
 // Main entry point for New York City (Midtown Manhattan) in Three.js WebGPURenderer & TSL (three.js dev, see index.html)
-
-const { THREE } = window.NYC;
-const {
-  pass,
-  mrt,
-  output,
-  normalView,
-  positionView,
-  metalness,
-  roughness,
-  vec2,
-  smoothstep
-} = window.NYC.TSL;
-const { ssr } = window.NYC.PostFX;
-const { createPostProcessing } = window.NYC;
-const { ClusteredLighting } = window.NYC.Addons;
-
-const { getLocationLabel, isTypingInField } = window.NYC;
-const { buildCityGrid } = window.NYC;
-const { buildBoroughs } = window.NYC;
-const { buildLandmarks } = window.NYC;
-const { buildCityBlocks } = window.NYC;
-const { buildStreetDetails } = window.NYC;
-const { createTrafficSystem, createHighwayTraffic } = window.NYC;
-const { buildRoadPaint } = window.NYC;
-const { ThirdPersonControllerManager } = window.NYC;
-const { TouchControls } = window.NYC;
-const { GamepadControls } = window.NYC;
-const { CameraSystem, CAMERA_PRESETS } = window.NYC;
-const { LightingSystem } = window.NYC;
-const { NYCMapSystem } = window.NYC;
-const { setupSceneCulling, updateSceneCulling } = window.NYC;
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -60,9 +48,7 @@ async function initApp() {
   renderer.setPixelRatio(1.0);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  if (ClusteredLighting) {
-    renderer.lighting = new ClusteredLighting(256, 32, 28, 48);
-  }
+  renderer.lighting = new ClusteredLighting(256, 32, 28, 48);
   container.appendChild(renderer.domElement);
 
   // Start-up phase timings (logged once as "[init] ...") to keep load-time regressions traceable
@@ -122,7 +108,7 @@ async function initApp() {
   const cullingRoots = ['ManhattanCityGrid', 'ManhattanCityBlocks', 'ManhattanStreetDetails', 'ManhattanLandmarks', 'Boroughs']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
-  const cullingStats = setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
+  setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
   markInit('culling');
 
   // Small InstancedMeshes (<= 1000 instances) keep their matrices in uniform buffers that three.js
@@ -170,7 +156,6 @@ async function initApp() {
   ssrPass.screenEdgeFadeBlack = true;
 
   const colorGrade = createPostProcessing(renderer, scenePassColor, ssrPass);
-  const { bloomPass } = colorGrade;
   const renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
 
   // 6. Wire UI Controls (Strictly using safe DOM APIs: textContent, classList, addEventListener)
@@ -350,8 +335,8 @@ async function initApp() {
   });
 
   // Where you are: the place's name over its street corner, drawn as a pair of NYC street-name signs
-  const roadNames = new Set(window.NYC.ROADS.map((r) => r.name));
-  const placeNames = new Set(window.NYC.NYC_LANDMARKS.map((l) => l.name));
+  const roadNames = new Set(ROADS.map((r) => r.name));
+  const placeNames = new Set(NYC_LANDMARKS.map((l) => l.name));
   let locationText = '';
   function renderLocation(label) {
     if (!elLocation || label === locationText) return;
@@ -412,6 +397,7 @@ async function initApp() {
     controllerManager,
     cameraSystem,
     trafficSystem,
+    allBlocks: cityBlocks.allBlocks,
     onToggle: (open) => {
       controllerManager.resetInput();
       touchControls.setEnabled(!open);
@@ -427,7 +413,7 @@ async function initApp() {
   teleportButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-teleport');
-      const loc = window.NYC.TELEPORT_LOCATIONS[key];
+      const loc = TELEPORT_LOCATIONS[key];
       if (loc) {
         teleportTo(loc.x, loc.z, loc.heading);
       }
@@ -515,31 +501,6 @@ async function initApp() {
   if (loadingStatus) {
     loadingStatus.textContent = 'Compiling Shaders & Render Pipelines...';
   }
-
-  // Expose programmatic API for testing & inspection
-  let currentFps = 60;
-  window.__NYC_APP = {
-    renderer,
-    scene,
-    renderPipeline,
-    postFX: { scenePass, ssrPass, bloomPass, colorGrade },
-    cullingStats,
-    cityBlocks,
-    quadtree: cityBlocks.quadtree,
-    trafficSystem,
-    highwayTraffic,
-    controllerManager,
-    touchControls,
-    gamepadControls,
-    cameraSystem,
-    lightingSystem,
-    mapSystem,
-    selectMode,
-    selectCamera,
-    cycleCamera,
-    selectTime,
-    getFps: () => currentFps
-  };
 
   // 6b. Shader pre-compilation behind the loading screen. compileAsync() builds the node graphs in slices and has the GPU
   //     process compile the pipelines in parallel, but after every 8 ms slice it waits for a rendered frame, which
@@ -684,7 +645,6 @@ async function initApp() {
         initTimings = null;
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
         setLoadingProgress(1);
-        window.__NYC_APP.ready = true;
       });
     }
 
@@ -693,7 +653,7 @@ async function initApp() {
     frameCount++;
     fpsTimer += Math.max(0, rawDt);
     if (fpsTimer >= 0.25) {
-      currentFps = Math.round(frameCount / fpsTimer);
+      const currentFps = Math.round(frameCount / fpsTimer);
       frameCount = 0;
       fpsTimer = 0;
 
@@ -718,5 +678,3 @@ async function initApp() {
 }
 
 initApp();
-
-})();

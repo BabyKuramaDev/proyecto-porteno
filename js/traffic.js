@@ -75,6 +75,21 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 function createTrafficSystem(scene, sidewalks, obstacles) {
   const group = new THREE.Group();
   group.name = 'ManhattanTrafficAndPedestrians';
+  let collisionListener = null;
+  const collisionEvent = { a: null, b: null, kind: 'vehicle', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
+
+  function setCollisionListener(listener) {
+    collisionListener = typeof listener === 'function' ? listener : null;
+  }
+
+  // Synchronous notification: listeners must copy any fields they retain. Normal points from b toward a.
+  function reportCollision(a, b, x, y, z, nx, nz, speed) {
+    if (!collisionListener || speed <= 0.5) return;
+    collisionEvent.a = a; collisionEvent.b = b;
+    collisionEvent.x = x; collisionEvent.y = y; collisionEvent.z = z;
+    collisionEvent.nx = nx; collisionEvent.nz = nz; collisionEvent.speed = speed;
+    collisionListener(collisionEvent);
+  }
 
   const dummy = new THREE.Object3D();
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -1145,6 +1160,9 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       const nz = dz / dist;
       const relVn = (v.vx - o.vx) * nx + (v.vz - o.vz) * nz;
       if (relVn <= 0.5) continue;
+      const approachSpeed = (v.tx * v.speed + v.vx - o.tx * o.speed - o.vx) * nx
+        + (v.tz * v.speed + v.vz - o.tz * o.speed - o.vz) * nz;
+      reportCollision(o, v, (v.x + o.x) * 0.5, 0.56, (v.z + o.z) * 0.5, nx, nz, approachSpeed);
       const transfer = relVn * 0.68;
       o.vx += nx * transfer;
       o.vz += nz * transfer;
@@ -1267,6 +1285,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     const contactLocalZ = clamp(localZ, -halfL, halfL);
     const contactX = v.x + contactLocalX * cosY + contactLocalZ * sinY;
     const contactZ = v.z - contactLocalX * sinY + contactLocalZ * cosY;
+    if (pe.type !== 'person') reportCollision(pe, v, contactX, v.bus ? 0.65 : 0.58, contactZ, nx, nz, approachSpeed);
 
     if (typeof pe.speed === 'number') {
       const headOnDot = Math.abs(pSin * nx + pCos * nz);
@@ -1954,6 +1973,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   return {
     group,
     update,
+    setCollisionListener,
     cars,
     buses,
     peds,

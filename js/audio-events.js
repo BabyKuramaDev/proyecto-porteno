@@ -175,6 +175,85 @@ function horn(ctx, duration, seed) {
   }, 0.7);
 }
 
+function crashBody(ctx, seed) {
+  const random = randomSource(seed);
+  const coefficients = [45, 240 + random() * 70, 950].map((frequency) => 1 - Math.exp(-TAU * frequency / ctx.sampleRate));
+  const bands = [0, 0, 0];
+  const rebound = 0.018 + random() * 0.018;
+  const decay = 0.026 + random() * 0.012;
+  return makeBuffer(ctx, 0.28, (t) => {
+    const noise = random() * 2 - 1;
+    for (let i = 0; i < bands.length; i++) bands[i] += (noise - bands[i]) * coefficients[i];
+    const contact = (1 - Math.exp(-t * 1600)) * Math.exp(-t / decay);
+    const second = Math.max(0, t - rebound);
+    const compression = (1 - Math.exp(-second * 700)) * Math.exp(-second / 0.034);
+    // Broad, damped bumper/body pressure with a second contact; there is no pitched kick or falling oscillator.
+    return (bands[1] - bands[0]) * (contact * 1.8 + compression * 0.65)
+      + (bands[2] - bands[1]) * (contact * 0.6 + compression * 0.18);
+  }, 0.7);
+}
+
+function crashMetal(ctx, seed) {
+  const random = randomSource(seed);
+  const creases = Array.from({ length: 7 }, () => ({
+    time: 0.008 + random() ** 2 * 0.19,
+    decay: 0.009 + random() * 0.020,
+    level: 0.25 + random() * 0.65
+  }));
+  const modes = [430, 790, 1370, 2380].map((frequency, i) => {
+    const radius = Math.exp(-1 / (ctx.sampleRate * (0.012 + random() * 0.016)));
+    return { a: 2 * radius * Math.cos(TAU * frequency * (0.88 + random() * 0.24) / ctx.sampleRate),
+      b: radius * radius, gain: (1 - radius) * [1, 0.85, 0.6, 0.3][i], y1: 0, y2: 0 };
+  });
+  const lowCoefficient = 1 - Math.exp(-TAU * 550 / ctx.sampleRate);
+  const highCoefficient = 1 - Math.exp(-TAU * 4800 / ctx.sampleRate);
+  let low = 0, high = 0;
+  return makeBuffer(ctx, 0.43, (t) => {
+    const noise = random() * 2 - 1;
+    low += (noise - low) * lowCoefficient;
+    high += (noise - high) * highCoefficient;
+    let pressure = (1 - Math.exp(-t * 1800)) * Math.exp(-t / 0.018);
+    for (const crease of creases) {
+      const local = t - crease.time;
+      if (local > 0) pressure += (1 - Math.exp(-local * 2200)) * Math.exp(-local / crease.decay) * crease.level;
+    }
+    const excitation = noise * pressure;
+    let panel = 0;
+    for (const mode of modes) {
+      const y = excitation + mode.a * mode.y1 - mode.b * mode.y2;
+      mode.y2 = mode.y1;
+      mode.y1 = y;
+      panel += y * mode.gain;
+    }
+    // Inharmonic sheet-metal resonances are driven by uneven buckles, underneath a short crushed/scraped texture.
+    return panel * 1.7 + (high - low) * pressure * 0.22;
+  }, 0.65);
+}
+
+function crashDebris(ctx, seed) {
+  const random = randomSource(seed);
+  const grains = Array.from({ length: 14 }, () => {
+    const time = 0.015 + random() ** 1.7 * 0.51;
+    return { time, frequency: 1400 + random() * 4300, decay: 0.003 + random() * 0.010,
+      level: (0.25 + random() * 0.75) * (1 - time * 0.9) };
+  });
+  const coefficient = 1 - Math.exp(-TAU * 1100 / ctx.sampleRate);
+  let low = 0;
+  return makeBuffer(ctx, 0.67, (t) => {
+    const noise = random() * 2 - 1;
+    low += (noise - low) * coefficient;
+    let fragments = 0;
+    for (const grain of grains) {
+      const local = t - grain.time;
+      if (local <= 0 || local > grain.decay * 7) continue;
+      const envelope = (1 - Math.exp(-local * 3500)) * Math.exp(-local / grain.decay) * grain.level;
+      const ring = Math.sin(TAU * grain.frequency * local) + Math.sin(TAU * grain.frequency * 1.71 * local) * 0.3;
+      fragments += ((noise - low) * 0.7 + ring * 0.16) * envelope;
+    }
+    return fragments;
+  }, 0.55);
+}
+
 function gustBuffer(ctx) {
   // Low-rate, looping control signal: uneven overlapping gusts with a smooth seam, rather than a sine LFO.
   const sampleRate = 8000, duration = 24;
@@ -217,6 +296,11 @@ export function createEventResources(ctx, resources) {
     footsteps: Array.from({ length: 8 }, (_, i) => footstep(ctx, i + 1)),
     syllables: speakers.map((speaker, voice) => Array.from({ length: 4 }, (_, i) => speechFragment(ctx, speaker, i + voice * 4 + 20))),
     horns: [0.22, 0.37, 0.55].map((duration, i) => horn(ctx, duration, 17 + i)),
+    crashes: {
+      body: Array.from({ length: 3 }, (_, i) => crashBody(ctx, i + 301)),
+      metal: Array.from({ length: 3 }, (_, i) => crashMetal(ctx, i + 401)),
+      debris: Array.from({ length: 3 }, (_, i) => crashDebris(ctx, i + 501))
+    },
     gusts: gustBuffer(ctx),
     signalTick: signal(ctx, false),
     signalWalk: signal(ctx, true)
@@ -227,7 +311,7 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
   const random = randomSource(options.seed);
   const start = Math.max(ctx.currentTime, finite(options.when, ctx.currentTime));
   const intensity = clamp(finite(options.intensity, 1));
-  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13 };
+  const levels = { footstep: 0.22, talk: 0.065, horn: 0.23, signal: 0.13, crash: 0.35 };
   if (!Object.hasOwn(levels, kind) || intensity === 0) return { endTime: start, dispose() {} };
   const gain = ctx.createGain();
   gain.gain.value = intensity * levels[kind];
@@ -295,6 +379,15 @@ export function playEvent(ctx, resources, kind, output, options = {}) {
     }
   } else if (kind === 'horn') {
     play(resources.horns[Math.floor(random() * resources.horns.length)], start, 0.94 + random() * 0.12);
+  } else if (kind === 'crash') {
+    const severity = clamp(finite(options.severity, intensity));
+    const variant = Math.floor(random() * resources.crashes.body.length);
+    const rate = (1.16 - severity * 0.24) * (0.96 + random() * 0.08);
+    play(resources.crashes.body[variant], start, rate, 0.7 + severity * 0.3);
+    play(resources.crashes.metal[variant], start + 0.003, rate, 0.08 + severity * 0.72);
+    if (severity > 0.45) {
+      play(resources.crashes.debris[variant], start + 0.012, rate, (severity - 0.45) / 0.55 * 0.55);
+    }
   } else {
     play(options.walk ? resources.signalWalk : resources.signalTick, start);
   }

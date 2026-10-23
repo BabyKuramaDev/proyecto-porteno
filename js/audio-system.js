@@ -4,9 +4,10 @@ import { CityAudioSources } from './audio-sources.js';
 import { CityAcoustics } from './audio-acoustics.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const smooth = (param, value, now, time = 0.035) => {
+const smooth = (param, value, now, time = 0.035, immediate = false) => {
   param.cancelScheduledValues(now);
-  param.setTargetAtTime(value, now, time);
+  if (immediate) param.setValueAtTime(value, now);
+  else param.setTargetAtTime(value, now, time);
 };
 
 // Direct sound is muffled behind buildings; the shared reflection path keeps some diffuse sound around corners.
@@ -44,7 +45,7 @@ class SpatialEmitter {
     this.panner.connect(reflections);
   }
 
-  update(source, listener, now, range = 160, snap = false) {
+  update(source, listener, now, range = 160, snap = false, immediate = false) {
     const y = source.y + this.height;
     const distance = Math.hypot(source.x - listener.x, y - listener.y, source.z - listener.z);
     if (snap) {
@@ -68,10 +69,10 @@ class SpatialEmitter {
       this.nextObstruction = now + 0.28 + (Math.abs(source.seed || 0) % 1) * 0.12;
     }
     const fade = clamp((range - distance) / (range * 0.3), 0, 1);
-    smooth(this.input.gain, (source.gain ?? 1) * fade * fade * (3 - 2 * fade), now);
-    smooth(this.direct.gain, 1 - this.obstruction * 0.78, now, 0.12);
+    smooth(this.input.gain, (source.gain ?? 1) * fade * fade * (3 - 2 * fade), now, 0.035, immediate);
+    smooth(this.direct.gain, 1 - this.obstruction * 0.78, now, 0.12, immediate);
     const airCutoff = 1800 + 14000 * Math.exp(-distance / 70);
-    smooth(this.filter.frequency, airCutoff * Math.pow(0.065, this.obstruction), now, 0.12);
+    smooth(this.filter.frequency, airCutoff * Math.pow(0.065, this.obstruction), now, 0.12, immediate);
     return distance;
   }
 
@@ -104,6 +105,11 @@ class CityAudioSystem {
     this.haveListener = false;
     this.accumulator = 0;
     this.lastHorn = -Infinity;
+    this.collisionPairs = new WeakMap();
+    this.collisionSequence = 0;
+    this.collisionSystems = [simulation.controllerManager, simulation.trafficSystem];
+    this.onCollision = (impact) => this.crash(impact);
+    for (const system of this.collisionSystems) system.setCollisionListener?.(this.onCollision);
     this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0 };
     this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0 };
     this.footPosition = { x: 0, y: 0, z: 0, seed: 0 };
@@ -198,6 +204,7 @@ class CityAudioSystem {
     for (const event of this.events) { event.voice.dispose(true); event.emitter.dispose(); }
     this.events.length = 0;
     this.states = new WeakMap();
+    this.collisionPairs = new WeakMap();
     this.haveListener = false;
     this.accumulator = 0;
     if (this.master) {
@@ -263,17 +270,82 @@ class CityAudioSystem {
     }
   }
 
+  removeEvent(index) {
+    const event = this.events[index];
+    event.voice.dispose(true);
+    event.emitter.dispose();
+    this.events.splice(index, 1);
+  }
+
   emit(kind, source, options = {}) {
-    if (this.events.length >= this.limits.events) return false;
     const now = this.context.currentTime;
-    const ref = kind === 'horn' ? 8 : kind === 'talk' ? 2 : 1.8;
-    const range = kind === 'horn' ? 140 : kind === 'talk' ? 30 : kind === 'footstep' ? 22 : 35;
+    const crash = kind === 'crash';
+    const severity = clamp(options.severity ?? options.intensity ?? 1, 0, 1);
+    const ref = crash ? 4 + severity * 8 : kind === 'horn' ? 8 : kind === 'talk' ? 2 : 1.8;
+    const range = crash ? 50 + severity * 110 : kind === 'horn' ? 140 : kind === 'talk' ? 30 : kind === 'footstep' ? 22 : 35;
     if (Math.hypot(source.x - this.listener.x, source.y - this.listener.y, source.z - this.listener.z) > range) return false;
+    if (crash) {
+      // Impacts are immediate, between the 10 Hz ambience updates. Reclaim finished events first, then let
+      // a strong impact displace a quieter crash or background event without increasing the voice budget.
+      for (let i = this.events.length - 1; i >= 0; i--) {
+        if (now >= this.events[i].voice.endTime) this.removeEvent(i);
+      }
+      let crashes = 0, weakest = -1;
+      for (let i = 0; i < this.events.length; i++) {
+        const event = this.events[i];
+        if (event.kind !== 'crash') continue;
+        crashes++;
+        if (weakest < 0 || event.severity < this.events[weakest].severity) weakest = i;
+      }
+      if (crashes >= Math.min(3, this.limits.events)) {
+        if (severity <= this.events[weakest].severity) return false;
+        this.removeEvent(weakest);
+      }
+      if (this.events.length >= this.limits.events) {
+        const background = this.events.findIndex(event => event.kind !== 'crash' && event.kind !== 'horn');
+        if (background < 0) return false;
+        this.removeEvent(background);
+      }
+    }
+    if (this.events.length >= this.limits.events) return false;
     const emitter = new SpatialEmitter(this.context, this.mix, this.reflections, this.acoustics,
       ref, kind === 'talk' ? 1.5 : 0, kind === 'horn');
-    emitter.update(source, this.listener, now, range, true);
+    // Do not fade away the first few milliseconds of a crash: its spatial gain and filtering are ready at onset.
+    emitter.update(source, this.listener, now, range, true, crash);
     const voice = playEvent(this.context, this.resources, kind, emitter.input, { seed: source.seed, ...options });
-    this.events.push({ kind, voice, emitter, id: source.id, range, position: { ...source }, follow: kind === 'talk' || kind === 'horn' });
+    this.events.push({ kind, voice, emitter, id: source.id, range, severity, position: { ...source }, follow: kind === 'talk' || kind === 'horn' });
+    return true;
+  }
+
+  crash(impact) {
+    if (!this.ready || !this.enabled || !this.haveListener || this.context?.state !== 'running' || document.hidden) return false;
+    const { a, b, x, y, z, speed } = impact;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || a === b
+      || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(speed) || speed < 0.8) return false;
+    if (Math.hypot(x - this.listener.x, y - this.listener.y, z - this.listener.z) > 160) return false;
+    const now = this.context.currentTime;
+    let contacts = this.collisionPairs.get(a);
+    if (!contacts) this.collisionPairs.set(a, contacts = new WeakMap());
+    let contact = contacts.get(b);
+    if (!contact) {
+      contact = { last: -Infinity, played: -Infinity, speed: 0 };
+      contacts.set(b, contact);
+      let reverse = this.collisionPairs.get(b);
+      if (!reverse) this.collisionPairs.set(b, reverse = new WeakMap());
+      reverse.set(a, contact);
+    }
+    const separated = now - contact.last > 0.3;
+    contact.last = now;
+    // Both pair orders share the gate. Sustained rubbing stays quiet, but a substantially stronger second hit
+    // or a new impact after separation can sound again; muting/reset discards this history rather than queuing it.
+    if (now - contact.played < 0.18 || (!separated && speed <= Math.max(4, contact.speed * 1.8))) return false;
+    const light = a.type === 'cyclist' || b.type === 'cyclist';
+    const severity = clamp((speed - 0.8) / 22, 0, 1) * (light ? 0.65 : 1);
+    const intensity = (0.12 + 0.88 * Math.sqrt(severity)) * (light ? 0.7 : 1);
+    // The physics record is reused. emit() copies this position so the crash remains at the contact point.
+    if (!this.emit('crash', { id: a, x, y, z, seed: ++this.collisionSequence }, { severity, intensity })) return false;
+    contact.played = now;
+    contact.speed = speed;
     return true;
   }
 
@@ -316,7 +388,7 @@ class CityAudioSystem {
     for (let i = this.events.length - 1; i >= 0; i--) {
       const event = this.events[i];
       if (now >= event.voice.endTime) {
-        event.voice.dispose(true); event.emitter.dispose(); this.events.splice(i, 1);
+        this.removeEvent(i);
       } else {
         const source = event.follow && (sources.motors.find(s => s.id === event.id) || sources.people.find(s => s.id === event.id));
         if (source) Object.assign(event.position, source);
@@ -360,7 +432,7 @@ class CityAudioSystem {
           for (let i = this.events.length - 1; i >= 0; i--) {
             const event = this.events[i];
             if (event.kind !== 'signal' || event.id !== source.id) continue;
-            event.voice.dispose(true); event.emitter.dispose(); this.events.splice(i, 1);
+            this.removeEvent(i);
           }
         }
         state.walk = source.walk;
@@ -389,6 +461,7 @@ class CityAudioSystem {
 
   dispose() {
     this.disposed = true;
+    for (const system of this.collisionSystems) system.setCollisionListener?.(null);
     document.removeEventListener('pointerdown', this.onGesture);
     document.removeEventListener('keydown', this.onGesture);
     document.removeEventListener('visibilitychange', this.onVisibility);

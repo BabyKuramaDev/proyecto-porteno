@@ -33,6 +33,7 @@ import { bryantParkLawn } from './landmarks.js';
 
 // Spawn on 5th Ave at 37th St, facing south down the avenue toward the Empire State Building (34th St)
 const SPAWN_Z = streetZ(37);
+const groundCollider = { type: 'ground' };
 
 // Walking surface for the player's pedestrian (its rig samples it around its feet)
 const personGround = (controllers, x, z) => controllers.getGroundHeight(x, z, 'person');
@@ -132,6 +133,21 @@ class ThirdPersonControllerManager {
     });
 
     this.bindKeyboard();
+  }
+
+  setCollisionListener(listener) {
+    this._collisionListener = typeof listener === 'function' ? listener : null;
+    this._collisionEvent ??= { a: null, b: null, kind: '', x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, speed: 0 };
+  }
+
+  // Reuse one synchronous event; consumers must copy retained fields. Normal points from b toward a.
+  reportCollision(a, b, kind, x, y, z, nx, ny, nz, speed) {
+    if (!this._collisionListener || speed <= 0.5) return;
+    const event = this._collisionEvent;
+    event.a = a; event.b = b; event.kind = kind;
+    event.x = x; event.y = y; event.z = z;
+    event.nx = nx; event.ny = ny; event.nz = nz; event.speed = speed;
+    this._collisionListener(event);
   }
 
   bindKeyboard() {
@@ -794,7 +810,7 @@ class ThirdPersonControllerManager {
     return out;
   }
 
-  resolveHorizontalCollision(pos, radius, yHeight = 1.0, carEntity = null) {
+  resolveHorizontalCollision(pos, radius, yHeight = 1.0, carEntity = null, entity = carEntity) {
     // The detailed island (the helicopter may roam out over the harbour & the boroughs)
     const heli = this.activeMode === 'helicopter';
     const m = heli ? 6000 : 0;
@@ -883,6 +899,15 @@ class ThirdPersonControllerManager {
             pos.z = c.maxZ + extZ;
             nz = 1;
           }
+        }
+
+        if (this._collisionListener && entity && entity.type !== 'person') {
+          const sin = carEntity ? sinH : Math.sin(entity.heading);
+          const cos = carEntity ? cosH : Math.cos(entity.heading);
+          const approachSpeed = -((sin * entity.speed + (entity.vx || 0)) * nx + (cos * entity.speed + (entity.vz || 0)) * nz);
+          const support = carEntity ? Math.abs(nx * cos - nz * sin) * 0.86 + Math.abs(nx * sin + nz * cos) * 2.18 : radius;
+          this.reportCollision(entity, c, 'building', pos.x - nx * support, pos.y + (heli ? 1.1 : 0.56), pos.z - nz * support,
+            nx, 0, nz, approachSpeed);
         }
 
         if (carEntity) {
@@ -1133,7 +1158,7 @@ class ThirdPersonControllerManager {
 
     b.position.x += Math.sin(b.heading) * b.speed * dt;
     b.position.z += Math.cos(b.heading) * b.speed * dt;
-    this.resolveHorizontalCollision(b.position, 0.65, 1.0);
+    this.resolveHorizontalCollision(b.position, 0.65, 1.0, null, b);
     b.position.y = this.getGroundHeight(b.position.x, b.position.z, 'cyclist');
 
     const targetLean = -turnInput * Math.min(1.0, Math.abs(b.speed) / 9.0) * 0.34;
@@ -1188,8 +1213,11 @@ class ThirdPersonControllerManager {
     h.position.z += Math.cos(h.heading) * h.speed * dt;
     h.position.y += h.verticalSpeed * dt;
 
+    if (h.position.y < 0.25) {
+      this.reportCollision(h, groundCollider, 'ground', h.position.x, 0.25, h.position.z, 0, 1, 0, -h.verticalSpeed);
+    }
     h.position.y = Math.max(0.25, Math.min(380, h.position.y));
-    this.resolveHorizontalCollision(h.position, 4.5, h.position.y);
+    this.resolveHorizontalCollision(h.position, 4.5, h.position.y, null, h);
 
     const targetPitch = (h.speed / maxHorizSpeed) * 0.24;
     const targetRoll = -yawInput * 0.28;

@@ -160,15 +160,42 @@ function ratchetBuffer(context) {
   for (let tooth = 0; tooth < teeth; tooth++) {
     let index = Math.round((tooth + (random() - 0.5) * 0.06) / teeth * length);
     index = (index + length) % length;
-    const strength = (tooth % 3 ? 0.62 : 1) * (0.75 + random() * 0.5);
+    const strength = (tooth % 3 ? 0.78 : 1) * (0.92 + random() * 0.16);
     for (let i = 0; i < rate * 0.004; i++) {
       const t = i / rate;
-      const click = (random() * 2 - 1) * 0.8 + Math.sin(t * 2 * Math.PI * 3100) * 0.2;
-      data[index] += click * strength * (1 - Math.exp(-t / 0.00008)) * Math.exp(-t / 0.0008);
+      // Let the hub filter provide the resonance: faster clicks should not become a high-pitched whine.
+      const impact = Math.exp(-t / 0.00025) - 0.25 * Math.exp(-t / 0.001);
+      const click = impact + (random() * 2 - 1) * Math.exp(-t / 0.0007) * 0.7;
+      data[index] += click * strength * (1 - Math.exp(-t / 0.00008));
       if (++index === length) index = 0;
     }
   }
   return normalizeLoop(buffer, 0.15, 0.85);
+}
+
+function chainBuffer(context) {
+  const rate = context.sampleRate;
+  const buffer = context.createBuffer(1, rate, rate); // One crank revolution at 60 rpm.
+  const data = buffer.getChannelData(0);
+  const random = randomSequence(0x63686169);
+  const teeth = 48;
+  for (let tooth = 0; tooth < teeth; tooth++) {
+    // Alternating links, with two gentle, slightly unequal power strokes per crank revolution.
+    const phase = tooth / teeth * Math.PI * 2;
+    const effort = 0.72 - Math.cos(phase * 2) * 0.18 + Math.sin(phase) * 0.06;
+    const strength = effort * (tooth % 2 ? 0.88 : 1) * (0.92 + random() * 0.16);
+    let index = Math.round(tooth / teeth * data.length);
+    let previous = 0;
+    for (let i = 0; i < rate * 0.012; i++) {
+      const t = i / rate;
+      const noise = random() * 2 - 1;
+      const friction = noise - previous * 0.65;
+      previous = noise;
+      data[index] += friction * strength * (1 - Math.exp(-t / 0.0003)) * Math.exp(-t / 0.0024);
+      if (++index === data.length) index = 0;
+    }
+  }
+  return normalizeLoop(buffer, 0.16, 0.8);
 }
 
 function sirenSweepWave(context) {
@@ -255,6 +282,7 @@ export function createSynthResources(context) {
     rotorEnvelope: helicopter.envelope,
     turbine: turbineBuffer(context),
     ratchet: ratchetBuffer(context),
+    chain: chainBuffer(context),
     sirenWave: wave([0, 1, 0.13, 0.29, 0.055, 0.11, 0.025, 0.045, 0.012, 0.018]),
     sirenSweep: sirenSweepWave(context),
     voiceSerial: 0
@@ -454,26 +482,42 @@ export function createMotorVoice(context, resources, kind, output) {
     };
   } else if (kind === 'cyclist') {
     const road = loop();
-    const tireFilter = filter('bandpass', 1500, 0.45);
+    const tireHighpass = filter('highpass', 110, 0.6);
+    const tireFilter = filter('lowpass', 1400, 0.65);
     const tireGain = gain();
-    road.connect(tireFilter).connect(tireGain).connect(mix);
+    road.connect(tireHighpass).connect(tireFilter).connect(tireGain).connect(mix);
     const ratchet = loop(resources.ratchet);
-    const ratchetFilter = filter('bandpass', 2700, 0.65);
+    const ratchetFilter = filter('bandpass', 2600, 1);
     const ratchetGain = gain();
     ratchet.connect(ratchetFilter).connect(ratchetGain).connect(mix);
+    const chain = loop(resources.chain);
+    const chainFilter = filter('bandpass', 1900, 0.65);
+    const chainGain = gain();
+    chain.connect(chainFilter).connect(chainGain).connect(mix);
     const tireLevel = smoothParameter(tireGain.gain, 0.15);
-    const ratchetLevel = smoothParameter(ratchetGain.gain, 0.10);
-    const ratchetRate = smoothParameter(ratchet.playbackRate, 0.10, 0.001, true);
+    const tireFrequency = smoothParameter(tireFilter.frequency, 0.15, 1);
+    const ratchetLevel = smoothParameter(ratchetGain.gain, 0.035);
+    const ratchetRate = smoothParameter(ratchet.playbackRate, 0.05, 0.001, true);
     const ratchetFrequency = smoothParameter(ratchetFilter.frequency, 0.15, 1);
+    const chainLevel = smoothParameter(chainGain.gain, 0.05);
+    const chainRate = smoothParameter(chain.playbackRate, 0.05, 0.001, true);
+    const chainFrequency = smoothParameter(chainFilter.frequency, 0.15, 1);
     const noiseRate = smoothParameter(road.playbackRate, 0.12, 0.001);
     render = (speed, load, doppler, now) => {
       const movement = Math.min(1.25, speed / 12);
-      tireLevel(Math.pow(movement, 1.15) * 0.22, now);
-      // A freewheel rattles while coasting; pedaling engages the pawls and leaves only faint chain/tire sound.
-      ratchetLevel(Math.min(1, speed / 3) * (0.018 + (1 - load) * 0.23), now);
-      ratchetRate(Math.max(0.06, speed / 5.5) * (0.97 + variation * 0.06) * doppler, now);
-      ratchetFrequency(2700 * doppler, now);
-      noiseRate(doppler, now);
+      const rolling = Math.min(1, speed / 2);
+      const pedaling = load > 0 ? 1 : 0;
+      tireLevel(Math.pow(movement, 1.35) * 0.16, now);
+      tireFrequency((900 + Math.min(1, movement) * 2100) * doppler, now);
+      // Even light pedaling engages the freewheel. The hub clicks only while coasting.
+      ratchetLevel(rolling * (1 - pedaling) * 0.19, now);
+      ratchetRate(Math.max(0.01, speed * 24 / (2 * Math.PI * 0.35 * 60)) * doppler, now);
+      ratchetFrequency(2600 * (0.97 + variation * 0.06) * doppler, now);
+      chainLevel(rolling * pedaling * (0.045 + Math.sqrt(load) * 0.10), now);
+      // Match the controller's 35 cm wheels and 3.2 wheel revolutions per crank revolution.
+      chainRate(Math.max(0.01, speed / (2 * Math.PI * 0.35 * 3.2)) * doppler, now);
+      chainFrequency((1700 + load * 600) * doppler, now);
+      noiseRate((0.9 + Math.min(1, movement) * 0.2) * doppler, now);
     };
   } else {
     const siren = oscillator(resources.sirenWave, 1125);

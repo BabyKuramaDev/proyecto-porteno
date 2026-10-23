@@ -762,6 +762,13 @@ function buildRoadNetwork(sidewalks, obstacles) {
   const genCreated = edges.filter((e) => e.general).length;
   edges = edges.filter((e) => e.len > (e.general ? 4 : 6));
 
+  // Paint describes the physical streets, including dead ends and roads AI traffic cannot circulate through.
+  // Snapshot their geometry before routing moves stop lines, drops edges and renumbers the surviving junctions.
+  const paintNodes = new Map(nodes.map((n, id) => [n, { id, x: n.x, z: n.z, shape: n.shape }]));
+  const paintEdges = edges.map(({ from, to, axis, x0, z0, sx, sz, dx, dz, rx, rz, span, len, half, lanes }) => ({
+    from: paintNodes.get(from), to: paintNodes.get(to), axis, x0, z0, sx, sz, dx, dz, rx, rz, span, len, half, lanes
+  }));
+
   // 6. Movements at each intersection (no U-turns) and the lane each lane leads to, along obstacle-free curves:
   //    straight on, lane i keeps to lane i + k ahead, k chosen to use as many lanes there as possible with the least
   //    sideways shift; turns go from the lane nearest the turn into the lane nearest it. Lanes left with no way on
@@ -1100,7 +1107,8 @@ function buildRoadNetwork(sidewalks, obstacles) {
     return c;
   }
 
-  return { nodes, edges, connector, curvePoint, walkable, onSidewalk };
+  const isRoadClear = (x, z, clear = 0.15) => !blockedOnStreet(x, z, clear);
+  return { nodes, edges, paintEdges, connector, curvePoint, walkable, onSidewalk, isRoadClear };
 }
 
 // The largest strongly connected set of `list` (a Set), going on from item e to the items next(e)

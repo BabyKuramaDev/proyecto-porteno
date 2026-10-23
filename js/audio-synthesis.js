@@ -509,11 +509,11 @@ export function createMotorVoice(context, resources, kind, output) {
       const pedaling = load > 0 ? 1 : 0;
       tireLevel(Math.pow(movement, 1.35) * 0.16, now);
       tireFrequency((900 + Math.min(1, movement) * 2100) * doppler, now);
-      // Even light pedaling engages the freewheel. The hub clicks only while coasting.
-      ratchetLevel(rolling * (1 - pedaling) * 0.19, now);
+      // Even light pedaling engages the freewheel. Coasting clicks stand out above the quieter loaded chain.
+      ratchetLevel(rolling * (1 - pedaling) * 0.38, now);
       ratchetRate(Math.max(0.01, speed * 24 / (2 * Math.PI * 0.35 * 60)) * doppler, now);
       ratchetFrequency(2600 * (0.97 + variation * 0.06) * doppler, now);
-      chainLevel(rolling * pedaling * (0.045 + Math.sqrt(load) * 0.10), now);
+      chainLevel(rolling * pedaling * (0.02 + Math.sqrt(load) * 0.04), now);
       // Match the controller's 35 cm wheels and 3.2 wheel revolutions per crank revolution.
       chainRate(Math.max(0.01, speed / (2 * Math.PI * 0.35 * 3.2)) * doppler, now);
       chainFrequency((1700 + load * 600) * doppler, now);

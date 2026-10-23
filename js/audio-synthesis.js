@@ -39,46 +39,58 @@ function normalizeLoop(buffer, rms, ceiling = 0.9) {
 function combustionBuffers(context, cylinders, diesel, seed) {
   const rate = context.sampleRate;
   const referenceRPM = 1200;
+  const highReferenceRPM = diesel ? 2400 : 3600;
   const cycles = 20; // Twenty complete four-stroke cycles, not a single repeating waveform.
-  const length = Math.round(cycles * 120 / referenceRPM * rate);
-  const exhaust = context.createBuffer(1, length, rate);
-  const mechanical = context.createBuffer(1, length, rate);
-  const pressure = exhaust.getChannelData(0), clatter = mechanical.getChannelData(0);
+  const mechanical = context.createBuffer(1, Math.round(cycles * 120 / referenceRPM * rate), rate);
   const random = randomSequence(seed);
   const cylinderStrength = Array.from({ length: cylinders }, () => 0.83 + random() * 0.34);
   const cylinderDelay = Array.from({ length: cylinders }, () => (random() - 0.5) * 0.035);
-  const interval = length / (cycles * cylinders);
+  const resonance = (diesel ? 93 : cylinders === 6 ? 118 : 145) * (0.97 + random() * 0.06);
   const duration = Math.round(rate * (diesel ? 0.062 : 0.048));
-  for (let firing = 0; firing < cycles * cylinders; firing++) {
-    const cylinder = firing % cylinders;
-    let index = Math.round((firing + cylinderDelay[cylinder] + (random() - 0.5) * 0.022) * interval);
-    index = (index + length) % length;
-    const strength = cylinderStrength[cylinder] * (0.79 + random() * 0.42);
-    const resonance = (diesel ? 93 : cylinders === 6 ? 118 : 145) * (0.82 + random() * 0.36);
-    const decay = (diesel ? 0.019 : 0.012) * (0.85 + random() * 0.3);
-    let lowNoise = 0;
-    for (let i = 0; i < duration; i++) {
-      const t = i / rate;
-      const white = random() * 2 - 1;
-      lowNoise += (white - lowNoise) * 0.16;
-      const attack = 1 - Math.exp(-t / 0.00065);
-      const tail = Math.exp(-t / decay);
-      // A short pressure release, damped exhaust-body response and turbulent gas; each firing is different.
-      const release = Math.exp(-t / 0.0022) - 0.36 * Math.exp(-t / 0.009);
-      const body = Math.sin(2 * Math.PI * resonance * t) * tail * 0.30;
-      // Keep the firing order audible through the turbulent exhaust; a mostly noisy pulse hides RPM changes.
-      pressure[index] += strength * attack * (release + body * 0.7 + lowNoise * tail * (diesel ? 0.65 : 0.42));
-      // Injector/valve impacts contain much more noise than ringing, with a separate delayed tappet click.
-      const valveTime = Math.max(0, t - 0.009);
-      const valve = t > 0.009 ? Math.exp(-valveTime / 0.0016) * (white * 0.65 + Math.sin(valveTime * 14900) * 0.12) : 0;
-      clatter[index] += strength * (white * attack * Math.exp(-t / (diesel ? 0.0036 : 0.0022)) + valve * 0.35);
-      if (++index === length) index = 0;
+
+  function exhaustBuffer(rpm, clatter) {
+    const length = Math.round(cycles * 120 / rpm * rate);
+    const buffer = context.createBuffer(1, length, rate);
+    const pressure = buffer.getChannelData(0);
+    const interval = length / (cycles * cylinders);
+    // Separate timing from sample noise so both RPM banks share the same firing phases and cylinder balance.
+    const timing = randomSequence(seed), noise = randomSequence(seed ^ 0x65786861);
+    for (let firing = 0; firing < cycles * cylinders; firing++) {
+      const cylinder = firing % cylinders;
+      let index = Math.round((firing + cylinderDelay[cylinder] + (timing() - 0.5) * 0.012) * interval);
+      index = (index + length) % length;
+      const strength = cylinderStrength[cylinder] * (0.92 + timing() * 0.16);
+      const decay = (diesel ? 0.019 : 0.012) * (0.95 + timing() * 0.1);
+      let lowNoise = 0;
+      for (let i = 0; i < duration; i++) {
+        const t = i / rate;
+        const white = noise() * 2 - 1;
+        lowNoise += (white - lowNoise) * 0.16;
+        const attack = 1 - Math.exp(-t / 0.00065);
+        const tail = Math.exp(-t / decay);
+        // Keep the exhaust's resonance and decay in seconds as firing frequency increases. Pitching one
+        // idle loop through the entire rev range would shrink every pulse into a thin, high-pitched buzz.
+        const release = Math.exp(-t / 0.0022) - 0.36 * Math.exp(-t / 0.009);
+        const body = Math.sin(2 * Math.PI * resonance * t) * tail * 0.34;
+        pressure[index] += strength * attack * (release + body + lowNoise * tail * (diesel ? 0.5 : 0.28));
+        if (clatter) {
+          // Injector/valve impacts contain much more noise than ringing, with a separate delayed tappet click.
+          const valveTime = Math.max(0, t - 0.009);
+          const valve = t > 0.009 ? Math.exp(-valveTime / 0.0016) * (white * 0.65 + Math.sin(valveTime * 14900) * 0.12) : 0;
+          clatter[index] += strength * (white * attack * Math.exp(-t / (diesel ? 0.0036 : 0.0022)) + valve * 0.35);
+        }
+        if (++index === length) index = 0;
+      }
     }
+    return normalizeLoop(buffer, 0.30);
   }
+
   return {
-    exhaust: normalizeLoop(exhaust, 0.30),
+    exhaust: exhaustBuffer(referenceRPM, mechanical.getChannelData(0)),
+    highExhaust: exhaustBuffer(highReferenceRPM),
     mechanical: normalizeLoop(mechanical, diesel ? 0.22 : 0.18, 0.85),
-    referenceRPM
+    referenceRPM,
+    highReferenceRPM
   };
 }
 
@@ -309,13 +321,19 @@ export function createMotorVoice(context, resources, kind, output) {
     const bus = kind === 'bus';
     const suv = kind === 'suv';
     const sound = resources.combustion[kind];
+    const bankRatio = sound.highExhaust.duration / sound.exhaust.duration;
     const idle = bus ? 620 : suv ? 710 : 780;
     const ratios = bus ? [320, 205, 145, 108, 82] : [500, 325, 230, 170, 130];
     let gear = 0, rpm = idle, throttle = 0, previousTime = -1, gearLock = 0, shiftUntil = 0;
     const exhaust = loop(sound.exhaust);
+    const highExhaust = loop(sound.highExhaust);
+    highExhaust.playbackRate.value = bankRatio;
+    const lowBankGain = gain(1), highBankGain = gain();
     const exhaustFilter = filter('lowpass', 500, 0.65);
     const exhaustGain = gain();
-    exhaust.connect(exhaustFilter).connect(exhaustGain).connect(mix);
+    exhaust.connect(lowBankGain).connect(exhaustFilter);
+    highExhaust.connect(highBankGain).connect(exhaustFilter);
+    exhaustFilter.connect(exhaustGain).connect(mix);
     const mechanism = loop(sound.mechanical);
     const mechanismFilter = filter('bandpass', bus ? 1400 : 1700, 0.45);
     const mechanismGain = gain();
@@ -326,6 +344,9 @@ export function createMotorVoice(context, resources, kind, output) {
     const roadGain = gain();
     road.connect(roadHighpass).connect(roadLowpass).connect(roadGain).connect(mix);
     const exhaustRate = smoothParameter(exhaust.playbackRate, 0.035, 0.0005, true);
+    const highExhaustRate = smoothParameter(highExhaust.playbackRate, 0.035, 0.0005 * bankRatio, true);
+    const lowBankLevel = smoothParameter(lowBankGain.gain, 0.07, 0.0001, true);
+    const highBankLevel = smoothParameter(highBankGain.gain, 0.07, 0.0001, true);
     const mechanicalRate = smoothParameter(mechanism.playbackRate, 0.035, 0.0005, true);
     const exhaustCutoff = smoothParameter(exhaustFilter.frequency, 0.07, 1);
     const exhaustLevel = smoothParameter(exhaustGain.gain, 0.055);
@@ -367,9 +388,16 @@ export function createMotorVoice(context, resources, kind, output) {
       const torque = now < shiftUntil ? 0.52 : 1;
       const rolling = Math.min(1.35, speed / 28);
       exhaustRate(rpm / sound.referenceRPM * pitch, now);
+      highExhaustRate(rpm / sound.referenceRPM * pitch * bankRatio, now);
+      // Same cycle count, starting phase and proportional rates keep the firings in step. Equal-power
+      // blending avoids a volume dip between the banks' different exhaust resonances.
+      const bank = clamp((rpm - sound.referenceRPM) / (sound.highReferenceRPM - sound.referenceRPM), 0, 1);
+      const blend = bank * bank * (3 - 2 * bank);
+      lowBankLevel(Math.cos(blend * Math.PI / 2), now);
+      highBankLevel(Math.sin(blend * Math.PI / 2), now);
       mechanicalRate(rpm / sound.referenceRPM * pitch, now);
       exhaustCutoff((bus ? 480 : 650) + effort * (bus ? 1400 : 1800) + rpm * 0.24, now);
-      exhaustLevel(((bus ? 0.19 : suv ? 0.16 : 0.14) + effort * (bus ? 0.28 : 0.32)) * torque, now);
+      exhaustLevel(((bus ? 0.16 : suv ? 0.13 : 0.11) + effort * (bus ? 0.22 : 0.26)) * torque, now);
       mechanicalFrequency(((bus ? 1050 : 1250) + rpm * 0.12) * doppler, now);
       mechanicalLevel(((bus ? 0.10 : 0.03) + effort * (bus ? 0.15 : 0.085)) * torque, now);
       // Tire contact is broadband and becomes the dominant sound of a car passing at speed off-throttle.

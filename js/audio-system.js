@@ -104,7 +104,7 @@ class CityAudioSystem {
     this.haveListener = false;
     this.accumulator = 0;
     this.lastHorn = -Infinity;
-    this.motorParams = { speed: 0, load: 0, doppler: 1, seed: 0 };
+    this.motorParams = { speed: 0, load: 0, verticalSpeed: 0, doppler: 1, seed: 0 };
     this.windParams = { speed: 0, altitude: 0, night: 0, traffic: 0 };
     this.footPosition = { x: 0, y: 0, z: 0, seed: 0 };
     this.onGesture = (event) => {
@@ -244,6 +244,7 @@ class CityAudioSystem {
       const params = this.motorParams;
       params.speed = source.speed;
       params.load = source.load;
+      params.verticalSpeed = source.verticalSpeed;
       params.seed = source.seed;
       params.doppler = clamp(343 / (343 + radial), 0.85, 1.18);
       slot.voice.update(params, now);

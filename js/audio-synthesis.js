@@ -54,7 +54,7 @@ function combustionBuffers(context, cylinders, diesel, seed) {
     let index = Math.round((firing + cylinderDelay[cylinder] + (random() - 0.5) * 0.022) * interval);
     index = (index + length) % length;
     const strength = cylinderStrength[cylinder] * (0.79 + random() * 0.42);
-    const resonance = (diesel ? 93 : cylinders === 6 ? 118 : 145) * (0.94 + random() * 0.12);
+    const resonance = (diesel ? 93 : cylinders === 6 ? 118 : 145) * (0.82 + random() * 0.36);
     const decay = (diesel ? 0.019 : 0.012) * (0.85 + random() * 0.3);
     let lowNoise = 0;
     for (let i = 0; i < duration; i++) {
@@ -66,7 +66,8 @@ function combustionBuffers(context, cylinders, diesel, seed) {
       // A short pressure release, damped exhaust-body response and turbulent gas; each firing is different.
       const release = Math.exp(-t / 0.0022) - 0.36 * Math.exp(-t / 0.009);
       const body = Math.sin(2 * Math.PI * resonance * t) * tail * 0.30;
-      pressure[index] += strength * attack * (release * 0.72 + body + lowNoise * tail * 0.78);
+      // Keep the firing order audible through the turbulent exhaust; a mostly noisy pulse hides RPM changes.
+      pressure[index] += strength * attack * (release + body * 0.7 + lowNoise * tail * (diesel ? 0.65 : 0.42));
       // Injector/valve impacts contain much more noise than ringing, with a separate delayed tappet click.
       const valveTime = Math.max(0, t - 0.009);
       const valve = t > 0.009 ? Math.exp(-valveTime / 0.0016) * (white * 0.65 + Math.sin(valveTime * 14900) * 0.12) : 0;
@@ -89,21 +90,24 @@ function rotorBuffers(context) {
   const envelope = context.createBuffer(1, length, rate);
   const data = rotor.getChannelData(0), modulation = envelope.getChannelData(0);
   const random = randomSequence(0x726f746f);
-  const strengths = [1, 0.72, 0.93, 0.69];
+  const strengths = [1, 0.73, 0.96, 0.76];
   const interval = length / (revolutions * blades);
   for (let blade = 0; blade < revolutions * blades; blade++) {
-    let index = Math.round((blade + (random() - 0.5) * 0.025) * interval);
+    let index = Math.round((blade + (random() - 0.5) * 0.012) * interval);
     index = (index + length) % length;
-    const strength = strengths[blade % blades] * (0.85 + random() * 0.3);
+    const strength = strengths[blade % blades] * (0.94 + random() * 0.12);
     let turbulence = 0;
-    for (let i = 0; i < rate * 0.095; i++) {
+    for (let i = 0; i < rate * 0.085; i++) {
       const t = i / rate;
       turbulence += (random() * 2 - 1 - turbulence) * 0.24;
-      const attack = 1 - Math.exp(-t / 0.0011);
-      const pressure = (1 - t / 0.0055) * Math.exp(-t / 0.0055);
-      const slap = Math.sin(t * 2 * Math.PI * 76) * Math.exp(-t / 0.013) * 0.18;
-      const wash = attack * Math.exp(-t / 0.027);
-      data[index] += strength * (pressure * attack * 0.8 + slap + turbulence * wash * 1.4);
+      const attack = 1 - Math.exp(-t / 0.0003);
+      const pressure = (1 - t / 0.0032) * Math.exp(-t / 0.0032);
+      const body = Math.sin(t * 2 * Math.PI * 52) * Math.exp(-t / 0.021) * 0.32;
+      // A compact pressure pulse and low body give each blade weight; most wash is a separate modulated layer.
+      const slapTime = t - 0.005;
+      const slap = slapTime > 0 ? (1 - slapTime / 0.0008) * Math.exp(-slapTime / 0.0008) * 0.24 : 0;
+      const wash = attack * Math.exp(-t / 0.016);
+      data[index] += strength * (pressure * attack + body + slap + turbulence * wash * 0.42);
       modulation[index] += strength * wash;
       if (++index === length) index = 0;
     }
@@ -112,6 +116,26 @@ function rotorBuffers(context) {
   for (let i = 0; i < length; i++) peak = Math.max(peak, modulation[i]);
   for (let i = 0; i < length; i++) modulation[i] /= peak;
   return { rotor: normalizeLoop(rotor, 0.29), envelope };
+}
+
+function turbineBuffer(context) {
+  const rate = context.sampleRate;
+  const buffer = context.createBuffer(1, Math.round(rate * 2), rate);
+  const data = buffer.getChannelData(0), random = randomSequence(0x74757262);
+  let lowNoise = 0;
+  for (let i = 0; i < data.length; i++) {
+    const t = i / rate;
+    const white = random() * 2 - 1;
+    lowNoise += (white - lowNoise) * 0.18;
+    // Two close turbine tones beat gently above the gearbox. Integer cycles and periodic phase modulation
+    // wrap continuously; baking them once avoids a stack of oscillators for every helicopter voice.
+    const flutter = Math.sin(2 * Math.PI * 23 * t) * 0.12;
+    data[i] = Math.sin(2 * Math.PI * 1580 * t + flutter) * 0.30
+      + Math.sin(2 * Math.PI * 1593 * t - flutter) * 0.24
+      + Math.sin(2 * Math.PI * 3160 * t + flutter * 2) * 0.12
+      + Math.sin(2 * Math.PI * 790 * t) * 0.08 + (white - lowNoise) * 0.25;
+  }
+  return normalizeLoop(buffer, 0.22, 0.8);
 }
 
 function ratchetBuffer(context) {
@@ -215,6 +239,7 @@ export function createSynthResources(context) {
     },
     rotor: helicopter.rotor,
     rotorEnvelope: helicopter.envelope,
+    turbine: turbineBuffer(context),
     ratchet: ratchetBuffer(context),
     sirenWave: wave([0, 1, 0.055, 0.48, 0.035, 0.23, 0.025, 0.13, 0.015, 0.07]),
     sirenSweep: sirenSweepWave(context),
@@ -285,8 +310,7 @@ export function createMotorVoice(context, resources, kind, output) {
     const suv = kind === 'suv';
     const sound = resources.combustion[kind];
     const idle = bus ? 620 : suv ? 710 : 780;
-    const shifts = bus ? [4.8, 8.5, 13.5, 20] : [6.8, 12.5, 20, 29];
-    const ratios = bus ? [280, 185, 132, 100, 76] : [360, 235, 165, 120, 90];
+    const ratios = bus ? [320, 205, 145, 108, 82] : [500, 325, 230, 170, 130];
     let gear = 0, rpm = idle, throttle = 0, previousTime = -1, gearLock = 0, shiftUntil = 0;
     const exhaust = loop(sound.exhaust);
     const exhaustFilter = filter('lowpass', 500, 0.65);
@@ -301,10 +325,10 @@ export function createMotorVoice(context, resources, kind, output) {
     const roadLowpass = filter('lowpass', 3200, 0.5);
     const roadGain = gain();
     road.connect(roadHighpass).connect(roadLowpass).connect(roadGain).connect(mix);
-    const exhaustRate = smoothParameter(exhaust.playbackRate, 0.055, 0.0005, true);
-    const mechanicalRate = smoothParameter(mechanism.playbackRate, 0.055, 0.0005, true);
-    const exhaustCutoff = smoothParameter(exhaustFilter.frequency, 0.10, 1);
-    const exhaustLevel = smoothParameter(exhaustGain.gain, 0.09);
+    const exhaustRate = smoothParameter(exhaust.playbackRate, 0.035, 0.0005, true);
+    const mechanicalRate = smoothParameter(mechanism.playbackRate, 0.035, 0.0005, true);
+    const exhaustCutoff = smoothParameter(exhaustFilter.frequency, 0.07, 1);
+    const exhaustLevel = smoothParameter(exhaustGain.gain, 0.055);
     const mechanicalFrequency = smoothParameter(mechanismFilter.frequency, 0.12, 1);
     const mechanicalLevel = smoothParameter(mechanismGain.gain, 0.09);
     const roadLevel = smoothParameter(roadGain.gain, 0.18);
@@ -315,34 +339,41 @@ export function createMotorVoice(context, resources, kind, output) {
       const dt = first ? 0.1 : clamp(now - previousTime, 0, 0.5);
       previousTime = now;
       throttle = first ? load : throttle + (load - throttle) * (1 - Math.exp(-dt / (load > throttle ? 0.14 : 0.32)));
-      if (first) {
-        while (gear < shifts.length && speed > shifts[gear] * (1 + throttle * 0.35)) gear++;
+      const shiftRPM = (bus ? 1700 : 2700) + throttle * (bus ? 950 : 2900);
+      if (speed < 0.6) {
+        // A fresh launch starts in first immediately, even after a hard stop from top gear.
+        gear = 0;
+        gearLock = shiftUntil = 0;
+      } else if (first) {
+        while (gear < ratios.length - 1 && speed * ratios[gear] > shiftRPM) gear++;
       } else if (now >= gearLock) {
         const oldGear = gear;
-        if (gear < shifts.length && speed > shifts[gear] * (1 + throttle * 0.35) + 0.6) gear++;
-        else if (gear > 0 && speed < shifts[gear - 1] * 0.72) gear--;
+        const wheelRPM = speed * ratios[gear];
+        if (gear < ratios.length - 1 && wheelRPM > shiftRPM) gear++;
+        else if (gear > 0 && speed * ratios[gear - 1] < shiftRPM * 0.82
+          && (wheelRPM < (bus ? 1000 : 1600) || (throttle > 0.65 && wheelRPM < shiftRPM * 0.55))) gear--;
         if (gear !== oldGear) {
-          gearLock = now + 0.7;
-          shiftUntil = now + 0.18;
+          gearLock = now + 0.65;
+          if (gear > oldGear) shiftUntil = now + 0.14;
         }
       }
       // Wheel-coupled RPM, with torque-converter slip at low speed. Coasting retains engine braking rather than
       // dropping straight to idle; hysteresis and a minimum gear dwell prevent hunting around a shift boundary.
-      const slip = throttle * (bus ? 380 : 820) * Math.max(0.18, 1 - speed / 13);
-      const targetRPM = clamp(Math.max(idle, speed * ratios[gear]) + slip, idle, bus ? 2700 : 5400);
-      rpm = first ? targetRPM : rpm + (targetRPM - rpm) * (1 - Math.exp(-dt / (targetRPM > rpm ? 0.19 : 0.12)));
+      const slip = throttle * (bus ? 600 : 1500) * Math.max(0.12, 1 - speed / 16);
+      const targetRPM = clamp(Math.max(idle, speed * ratios[gear]) + slip, idle, bus ? 2900 : 6200);
+      rpm = first ? targetRPM : rpm + (targetRPM - rpm) * (1 - Math.exp(-dt / (targetRPM > rpm ? 0.12 : 0.075)));
       const pitch = (0.97 + variation * 0.06) * doppler;
       const effort = Math.min(1, throttle + speed * 0.005);
-      const torque = now < shiftUntil ? 0.62 : 1;
+      const torque = now < shiftUntil ? 0.52 : 1;
       const rolling = Math.min(1.35, speed / 28);
       exhaustRate(rpm / sound.referenceRPM * pitch, now);
       mechanicalRate(rpm / sound.referenceRPM * pitch, now);
-      exhaustCutoff((bus ? 420 : 520) + effort * 1250 + rpm * 0.055, now);
-      exhaustLevel(((bus ? 0.18 : suv ? 0.14 : 0.12) + effort * (bus ? 0.20 : 0.16)) * torque, now);
-      mechanicalFrequency((bus ? 1250 : 1600) * doppler, now);
-      mechanicalLevel(((bus ? 0.11 : 0.045) + effort * (bus ? 0.18 : 0.11)) * torque, now);
+      exhaustCutoff((bus ? 480 : 650) + effort * (bus ? 1400 : 1800) + rpm * 0.24, now);
+      exhaustLevel(((bus ? 0.19 : suv ? 0.16 : 0.14) + effort * (bus ? 0.28 : 0.32)) * torque, now);
+      mechanicalFrequency(((bus ? 1050 : 1250) + rpm * 0.12) * doppler, now);
+      mechanicalLevel(((bus ? 0.10 : 0.03) + effort * (bus ? 0.15 : 0.085)) * torque, now);
       // Tire contact is broadband and becomes the dominant sound of a car passing at speed off-throttle.
-      roadLevel(Math.pow(rolling, 1.25) * (bus ? 0.54 : 0.46), now);
+      roadLevel(Math.pow(rolling, 1.25) * (bus ? 0.44 : 0.36) * (1 - throttle * 0.5), now);
       roadFrequency((2200 + Math.min(1, rolling) * 2400) * doppler, now);
       noiseRate(doppler * (0.96 + variation * 0.08), now);
     };
@@ -358,9 +389,10 @@ export function createMotorVoice(context, resources, kind, output) {
     const bladeEnvelope = loop(resources.rotorEnvelope);
     const bladeDepth = gain();
     bladeEnvelope.connect(bladeDepth).connect(washGain.gain);
-    const turbineFilter = filter('bandpass', 3100, 0.7);
+    const turbine = loop(resources.turbine);
+    const turbineFilter = filter('bandpass', 2400, 0.55);
     const turbineGain = gain();
-    air.connect(turbineFilter).connect(turbineGain).connect(mix);
+    turbine.connect(turbineFilter).connect(turbineGain).connect(mix);
     const rotorRate = smoothParameter(rotor.playbackRate, 0.30, 0.0004, true);
     const envelopeRate = smoothParameter(bladeEnvelope.playbackRate, 0.30, 0.0004, true);
     const rotorLevel = smoothParameter(rotorGain.gain, 0.22);
@@ -370,21 +402,24 @@ export function createMotorVoice(context, resources, kind, output) {
     const washCutoff = smoothParameter(washFilter.frequency, 0.25, 1);
     const turbineFrequency = smoothParameter(turbineFilter.frequency, 0.25, 1);
     const turbineLevel = smoothParameter(turbineGain.gain, 0.22);
+    const turbineRate = smoothParameter(turbine.playbackRate, 0.4, 0.0005, true);
     const noiseRate = smoothParameter(air.playbackRate, 0.15, 0.001);
-    render = (speed, load, doppler, now) => {
+    render = (speed, load, doppler, now, verticalSpeed) => {
       const flight = Math.min(1, speed / 40);
+      const descent = clamp(-verticalSpeed / 10, 0, 1) * Math.min(1, speed / 10) * (1 - flight * 0.6);
       // A governed rotor changes speed very little: collective/forward flight primarily strengthen the blade slap
       // and turbulent wash. The pressure loop and its noise envelope share the same phase and playback rate.
-      const rate = (0.99 + variation * 0.02 + load * 0.025 + flight * 0.008) * doppler;
+      const rate = (0.994 + variation * 0.012 - load * 0.012 + flight * 0.004) * doppler;
       rotorRate(rate, now);
       envelopeRate(rate, now);
-      rotorLevel(0.34 + load * 0.12 + flight * 0.035, now);
-      rotorCutoff((1300 + load * 600 + flight * 350) * doppler, now);
-      washLevel(0.055 + load * 0.035, now);
-      bladeLevel(0.28 + load * 0.18 + flight * 0.08, now);
-      washCutoff((1000 + load * 750 + flight * 600) * doppler, now);
-      turbineFrequency((2900 + load * 700) * doppler, now);
-      turbineLevel(0.055 + load * 0.035, now);
+      rotorLevel(0.32 + load * 0.18 + descent * 0.12 + flight * 0.025, now);
+      rotorCutoff((1150 + load * 700 + descent * 1800) * doppler, now);
+      washLevel(0.022 + load * 0.025, now);
+      bladeLevel(0.18 + load * 0.25 + descent * 0.25, now);
+      washCutoff((800 + load * 650 + flight * 900) * doppler, now);
+      turbineFrequency((2000 + load * 900) * doppler, now);
+      turbineLevel(0.055 + load * 0.055, now);
+      turbineRate((0.92 + load * 0.16) * doppler, now);
       noiseRate(doppler, now);
     };
   } else if (kind === 'cyclist') {
@@ -439,7 +474,7 @@ export function createMotorVoice(context, resources, kind, output) {
     };
   }
 
-  function update({ speed = 0, load = 0, doppler = 1, seed = 0 } = {}, now = context.currentTime) {
+  function update({ speed = 0, load = 0, doppler = 1, seed = 0, verticalSpeed = 0 } = {}, now = context.currentTime) {
     if (disposed) return;
     const safeSeed = Number.isFinite(seed) ? seed : 0;
     if (safeSeed !== lastSeed) {
@@ -452,7 +487,8 @@ export function createMotorVoice(context, resources, kind, output) {
       Number.isFinite(speed) ? Math.min(Math.abs(speed), 100) : 0,
       Number.isFinite(load) ? clamp(load, 0, 1) : 0,
       Number.isFinite(doppler) ? clamp(doppler, 0.5, 2) : 1,
-      time
+      time,
+      Number.isFinite(verticalSpeed) ? clamp(verticalSpeed, -30, 30) : 0
     );
   }
 

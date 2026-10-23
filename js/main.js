@@ -100,6 +100,29 @@ async function initApp() {
 
   // 4. Initialize Third-Person Controllers (Person, Car, Cyclist, Helicopter) & Multi-Camera System
   const controllerManager = new ThirdPersonControllerManager(scene, allColliders);
+  // Reuse teleport placement so saved players return at rest, close to their last positions.
+  try {
+    const saved = JSON.parse(localStorage.getItem('nyc-player-state'));
+    if (saved?.version === 1) {
+      for (const mode of Object.keys(controllerManager.entities)) {
+        const p = saved.entities?.[mode];
+        if (!p || ![p.x, p.y, p.z, p.heading].every(Number.isFinite)) continue;
+        controllerManager.setMode(mode);
+        controllerManager.teleportActiveTo(p.x, p.z, p.heading, p.y);
+      }
+      controllerManager.setMode(Object.hasOwn(controllerManager.entities, saved.activeMode) ? saved.activeMode : 'car');
+    }
+  } catch { /* Missing or unavailable storage does not prevent playing. */ }
+
+  function savePlayerState() {
+    try {
+      const entities = Object.fromEntries(Object.entries(controllerManager.entities).map(([mode, entity]) => [mode, {
+        x: entity.position.x, y: entity.position.y, z: entity.position.z, heading: entity.heading
+      }]));
+      localStorage.setItem('nyc-player-state', JSON.stringify({ version: 1, activeMode: controllerManager.activeMode, entities }));
+    } catch { /* Storage may be disabled or full. */ }
+  }
+
   const cameraSystem = new CameraSystem(renderer.domElement, controllerManager);
   const touchControls = new TouchControls(controllerManager);
   const soundButton = document.getElementById('btn-sound');
@@ -117,7 +140,11 @@ async function initApp() {
   soundButton?.addEventListener('click', () => audioSystem.setEnabled(!audioSystem.enabled));
   updateSoundButton();
   // pagehide also covers navigation away on mobile; preserve the context across back-forward cache restores.
-  window.addEventListener('pagehide', (event) => { if (!event.persisted) audioSystem.dispose(); });
+  window.addEventListener('pagehide', (event) => {
+    savePlayerState();
+    if (!event.persisted) audioSystem.dispose();
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) savePlayerState(); });
   markInit('controllers');
 
   // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
@@ -511,8 +538,8 @@ async function initApp() {
     }
   });
 
-  // Initialize default selection
-  selectMode('car');
+  // Initialize the UI and chase camera around the restored player, or the default taxi on a first visit.
+  selectMode(controllerManager.activeMode);
   selectCamera('chase', true);
   selectTime('golden');
   // the web fonts change the buttons' widths once they arrive
@@ -607,6 +634,7 @@ async function initApp() {
   let elapsed = 0;
   let frameCount = 0;
   let fpsTimer = 0;
+  let nextPlayerSave = 0;
   let warmedUp = false; // see the first frame below
 
   if (elFps) elFps.textContent = '60';
@@ -631,6 +659,10 @@ async function initApp() {
       cameraSystem.camera
     );
     highwayTraffic.update(dt, cameraSystem.camera, controllerManager.getActiveEntity(), controllerManager.activeMode);
+    if (!document.hidden && now >= nextPlayerSave) {
+      savePlayerState();
+      nextPlayerSave = now + 5000;
+    }
     if (boroughs.update) boroughs.update(elapsed); // Roosevelt Island Tramway cabins
     cityBlocks.update(cameraSystem.currentPos.x, cameraSystem.currentPos.z);
     if (cityBlocks.updateLights) cityBlocks.updateLights(cameraSystem.camera);

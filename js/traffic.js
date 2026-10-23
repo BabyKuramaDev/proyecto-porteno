@@ -22,7 +22,7 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 
 // js/traffic.js
 // Manhattan traffic and pedestrians on the road graph road-network.js derives from the city as built:
-// - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 32 MTA buses keep to their lanes and follow the vehicle
+// - 200 cars (taxis, sedans, SUVs, NYPD cruisers) and 12 MTA buses keep to their lanes and follow the vehicle
 //   ahead (Intelligent Driver Model), change lanes to overtake or to reach a turn lane, turn into other streets,
 //   stop for the signals street-details.js shows, give way to oncoming traffic when turning left, to the avenue at
 //   unsignalized corners and to pedestrians on crosswalks, and never enter an intersection they can't clear.
@@ -31,7 +31,7 @@ import { PersonCrowd, PersonRig } from './pedestrians.js';
 // - The player's vehicle or character pushes and is pushed by the traffic (SAT contact, impulses, sparks).
 
 const NUM_CARS = 200;
-const NUM_BUSES = 32;
+const NUM_BUSES = 12;
 const NUM_PEDS = 340;
 
 // Intelligent Driver Model: max acceleration, comfortable braking, time headway, standstill gap; and the sideways
@@ -186,7 +186,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
 
   for (let i = 0; i < NUM_CARS; i++) {
     const isNYPD = (i % 40) === 6;
-    const isTaxi = !isNYPD && (i % 7) < 4;
+    const isTaxi = !isNYPD && (i % 5) === 0;
     const isSUV = !isNYPD && !isTaxi && (i % 2 === 0);
 
     let bodyType = 'sedan';
@@ -2030,7 +2030,7 @@ function createHighwayTraffic(scene, lanes) {
     lane.cars = [];
     for (let u = rand() * 30; u < lane.len - 12; u += 24 + rand() * 50) {
       const h = rand();
-      const kind = h < 0.32 ? 'taxi' : h < 0.72 ? 'sedan' : 'suv';
+      const kind = h < 0.20 ? 'taxi' : h < 0.65 ? 'sedan' : 'suv';
       const col = new THREE.Color(PALETTES[kind][Math.floor(rand() * PALETTES[kind].length)]);
       // (float32 values, so update() can tell whether an instance slot's paint changes by comparing with the buffer)
       const car = {

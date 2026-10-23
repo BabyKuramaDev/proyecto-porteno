@@ -1,4 +1,4 @@
-import { createSynthResources, createMotorVoice } from './audio-synthesis.js';
+import { createSynthResources, createMotorVoice, setControlRate } from './audio-synthesis.js';
 import { createEventResources, playEvent, createWindVoice } from './audio-events.js';
 import { CityAudioSources } from './audio-sources.js';
 import { CityAcoustics } from './audio-acoustics.js';
@@ -20,9 +20,14 @@ class SpatialEmitter {
     this.input = context.createGain();
     this.input.gain.value = 0;
     this.filter = context.createBiquadFilter();
+    setControlRate(this.filter.frequency, this.filter.detune, this.filter.Q, this.filter.gain);
     this.filter.type = 'lowpass';
     this.filter.Q.value = 0.5;
     this.panner = context.createPanner();
+    setControlRate(
+      this.panner.positionX, this.panner.positionY, this.panner.positionZ,
+      this.panner.orientationX, this.panner.orientationY, this.panner.orientationZ
+    );
     this.panner.panningModel = 'HRTF';
     this.panner.distanceModel = 'inverse';
     this.panner.refDistance = refDistance;
@@ -138,6 +143,12 @@ class CityAudioSystem {
   initialize() {
     const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
     const context = this.context = new Context({ latencyHint: 'interactive' });
+    const listener = context.listener;
+    setControlRate(
+      listener.positionX, listener.positionY, listener.positionZ,
+      listener.forwardX, listener.forwardY, listener.forwardZ,
+      listener.upX, listener.upY, listener.upZ
+    );
     this.resources = createEventResources(context, createSynthResources(context));
     this.mix = context.createGain();
     this.compressor = context.createDynamicsCompressor();

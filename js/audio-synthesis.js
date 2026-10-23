@@ -3,6 +3,15 @@
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
+// Movement and tone controls only need one value per audio block. Set every parameter on these nodes:
+// even an unused a-rate parameter can make the browser recalculate spatial/filter math for every sample.
+// Oscillator modulation and gain envelopes keep their default audio rate.
+export function setControlRate(...parameters) {
+  for (const parameter of parameters) {
+    if (parameter?.automationRate !== undefined) parameter.automationRate = 'k-rate';
+  }
+}
+
 function randomSequence(seed) {
   let state = seed >>> 0;
   return () => {
@@ -244,6 +253,7 @@ export function createMotorVoice(context, resources, kind, output) {
   };
   const filter = (type, frequency, q = 0.7) => {
     const node = own(context.createBiquadFilter());
+    setControlRate(node.frequency, node.detune, node.Q, node.gain);
     node.type = type;
     node.frequency.value = Math.min(frequency, context.sampleRate * 0.45);
     node.Q.value = q;

@@ -1,3 +1,5 @@
+import { setControlRate } from './audio-synthesis.js';
+
 const TAU = Math.PI * 2;
 const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, finite(value)));
@@ -324,16 +326,19 @@ export function createWindVoice(ctx, resources, output) {
     noise.buffer = resources.noise;
     noise.loop = true;
     const highpass = ctx.createBiquadFilter();
+    setControlRate(highpass.frequency, highpass.detune, highpass.Q, highpass.gain);
     highpass.type = 'highpass';
     highpass.frequency.value = 80;
     highpass.Q.value = 0.5;
     const lowpass = ctx.createBiquadFilter();
+    setControlRate(lowpass.frequency, lowpass.detune, lowpass.Q, lowpass.gain);
     lowpass.type = 'lowpass';
     lowpass.frequency.value = 1550;
     lowpass.Q.value = 0.4;
     const air = ctx.createGain();
     air.gain.value = 0.010;
     const rumbleFilter = ctx.createBiquadFilter();
+    setControlRate(rumbleFilter.frequency, rumbleFilter.detune, rumbleFilter.Q, rumbleFilter.gain);
     rumbleFilter.type = 'lowpass';
     rumbleFilter.frequency.value = 480;
     rumbleFilter.Q.value = 0.5;

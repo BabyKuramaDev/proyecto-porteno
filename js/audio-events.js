@@ -469,8 +469,8 @@ export function createWindVoice(ctx, resources, output) {
       const shelter = 1 - clamp(enclosure) * 0.65;
       for (const channel of channels) {
         // Walls shelter ambient wind; the rush from riding or flying still follows the player's motion.
-        channel.air((0.010 * shelter + motion * 0.024 + exposure * 0.015) * quiet, now);
-        channel.cutoff(1550 + motion * 1400 + exposure * 850, now);
+        channel.air((0.010 * shelter + motion * 0.012 + exposure * 0.015) * quiet, now);
+        channel.cutoff(1550 + motion * 700 + exposure * 850, now);
         channel.rumble((0.003 + clamp(traffic) * 0.020) * quiet * (1 - exposure * 0.5), now);
       }
     },

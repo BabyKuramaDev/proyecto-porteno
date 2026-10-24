@@ -253,6 +253,7 @@ const BODY_SPECS = {
     intake: [0.46, 0.43, 0.095], // lower grille
     plates: [0.47, 0.66], // front / rear plate centre heights
     bumperLine: [0.775, 0.595], // hood / bumper and trunk / bumper shut lines on the nose & tail
+    bumpers: [[0.585, 0.035], [0.54, 0.04]], // front / rear trim: centre height, half-height
     chrome: true, // chrome strip along the side windows' sills
     cladding: 0, // height of the unpainted lower body cladding (SUVs)
     sign: false,
@@ -298,6 +299,7 @@ const BODY_SPECS = {
     intake: [0.52, 0.44, 0.06],
     plates: [0.6, 0.76],
     bumperLine: [0.965, 0.84],
+    bumpers: [[0.73, 0.045], [0.62, 0.045]],
     chrome: false,
     cladding: 0.5,
     sign: false,
@@ -810,8 +812,36 @@ function buildTaxiSign(spec) {
   return [part(sign, CAR_PARTS.SIGN), part(mount, CAR_PARTS.TRIM)];
 }
 
+// Wrap the bumper strips around the nose and tail. Six rectangular sections cost just 44 triangles each;
+// the inner faces sit in the body, while the outer faces stand 2.5 cm proud of the tips.
+function buildBumpers(spec) {
+  const body = bodyProfile(spec);
+  return spec.bumpers.map(([y, h], end) => {
+    const direction = end === 0 ? 1 : -1;
+    const tip = end === 0 ? spec.zFront : spec.zRear;
+    const sections = [];
+    for (const side of [-1, 1]) {
+      for (const setback of side < 0 ? [0.3, 0.07, 0] : [0, 0.07, 0.3]) {
+        const z = tip - direction * setback;
+        const x = side * (body(z).W + 0.02);
+        const innerX = x - side * 0.05;
+        const outerZ = z + direction * 0.025;
+        const innerZ = z - direction * 0.105;
+        const section = [
+          new THREE.Vector3(x, y - h, outerZ),
+          new THREE.Vector3(innerX, y - h, innerZ),
+          new THREE.Vector3(innerX, y + h, innerZ),
+          new THREE.Vector3(x, y + h, outerZ)
+        ];
+        sections.push(direction > 0 ? section : section.reverse());
+      }
+    }
+    return part(new LoftGeometry(sections, { capStart: true, capEnd: true }), CAR_PARTS.TRIM);
+  });
+}
+
 function buildCarGeometry(spec, includeWheels = true) {
-  const parts = [buildCarBody(spec, 1), buildCarCabin(spec, 1), ...buildMirrors(spec)];
+  const parts = [buildCarBody(spec, 1), buildCarCabin(spec, 1), ...buildMirrors(spec), ...buildBumpers(spec)];
   for (const side of [-1, 1]) {
     for (const z of [-spec.wheelZ, spec.wheelZ]) {
       if (includeWheels) parts.push(...buildWheelParts(spec, side, true, z));

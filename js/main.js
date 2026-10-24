@@ -575,19 +575,23 @@ async function initApp() {
 
     // Every visible object with frustum culling off (like the warm-up frame, see the loop). Plain meshes that share
     // a material share its shader, so one job compiles them in turn (the first build serves the rest); every
-    // instanced mesh gets a build of its own
+    // instanced mesh gets a build of its own unless its chunks share a pipeline
     const culled = [];
     const jobs = [];
     const jobByMaterial = new Map();
+    const pipelines = new Set();
     scene.traverseVisible((o) => {
       if (o.frustumCulled) {
         culled.push(o);
         o.frustumCulled = false;
       }
       if (!o.isMesh && !o.isLine && !o.isPoints && !o.isSprite) return;
-      // chunks of one mesh share its pipeline (the first one compiles it) and the shadow stand-ins only ever draw in
-      // the shadow maps (the warm-up frame compiles those)
-      if (o.userData.sharesPipelineWith || o.userData.shadowProxy) return;
+      // Use the first visible chunk: the original representative may be in an inactive tree cell. Shadow stand-ins
+      // only draw in the shadow maps (the warm-up frame compiles those).
+      if (o.userData.shadowProxy) return;
+      const pipeline = o.userData.sharesPipelineWith || o;
+      if (pipelines.has(pipeline)) return;
+      pipelines.add(pipeline);
       if (o.isInstancedMesh || Array.isArray(o.material)) {
         jobs.push([o]);
         return;
@@ -684,8 +688,12 @@ async function initApp() {
       // map passes): with frustum culling off, every visible material's pipelines compile now instead of stalling the
       // first time the camera turns towards it (one chunk / shadow stand-in per shared pipeline is enough)
       const culled = [];
-      scene.traverse((o) => {
-        if (o.frustumCulled && !o.userData.sharesPipelineWith) {
+      const pipelines = new Set();
+      scene.traverseVisible((o) => {
+        const pipeline = o.userData.sharesPipelineWith || o;
+        if (pipelines.has(pipeline)) return;
+        pipelines.add(pipeline);
+        if (o.frustumCulled) {
           culled.push(o);
           o.frustumCulled = false;
         }

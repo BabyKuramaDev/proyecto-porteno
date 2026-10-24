@@ -36,7 +36,8 @@ const SPAWN_Z = streetZ(37);
 const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
-  speed: 23.5, boostSpeed: 36, reverseSpeed: 10.5, acceleration: 14, boostAcceleration: 21,
+  speed: 23.5, boostSpeed: 36, reverseSpeed: 10.5, acceleration: 4.5, boostAcceleration: 5.25,
+  powerSpeed: 12.5, // Above 45 km/h, engine power limits acceleration.
   rolling: 0.18, drag: 0.0012, coast: 0.6, brake: 9
 };
 const BICYCLE_DRIVE = {
@@ -54,7 +55,8 @@ function driveSpeed(speed, throttle, boost, dt, drive) {
   if (!throttle || braking) return Math.sign(speed) * coasting;
 
   const limit = throttle < 0 ? drive.reverseSpeed : boost ? drive.boostSpeed : drive.speed;
-  const acceleration = boost ? drive.boostAcceleration : drive.acceleration;
+  let acceleration = boost ? drive.boostAcceleration : drive.acceleration;
+  if (drive.powerSpeed) acceleration *= drive.powerSpeed / Math.max(drive.powerSpeed, magnitude);
   // Releasing boost removes the extra power; existing momentum decays naturally instead of being clamped.
   return Math.sign(throttle) * Math.min(Math.max(limit, coasting), coasting + Math.abs(throttle) * acceleration * dt);
 }

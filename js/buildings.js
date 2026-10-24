@@ -47,7 +47,7 @@ import { fdrViaduct, pavedPlazaRects, parkTreeSites, sidewalkBlocks } from './ci
 
 // js/buildings.js
 // Generates dense, architecturally varied Manhattan city blocks across the entire island
-// indexed by a spatial 2D Quadtree (ManhattanQuadtree) that dynamically streams high-detail
+// indexed by a spatial 2D quadtree that dynamically streams high-detail
 // architectural elements (carved stone cornices/ledges, rooftop cedar water towers, mechanical
 // penthouses, wrought-iron fire escapes, retail awnings, illuminated storefront signs, and
 // sidewalk scaffolding sheds) around the player anywhere in Manhattan.
@@ -69,10 +69,9 @@ function mulberry32(seed) {
 }
 
 /**
- * Spatial 2D Quadtree partitioning all of Manhattan Island (Harlem 125th St to Battery Park)
- * for fast O(log N) range queries around the active player/camera position.
+ * Spatial 2D quadtree for range queries around the active player/camera position.
  */
-class ManhattanQuadtree {
+class Quadtree {
   constructor(bounds, capacity = 6, maxDepth = 6, depth = 0) {
     this.bounds = bounds; // { minX, maxX, minZ, maxZ }
     this.capacity = capacity;
@@ -106,10 +105,10 @@ class ManhattanQuadtree {
     const midZ = (b.minZ + b.maxZ) * 0.5;
     const nextDepth = this.depth + 1;
 
-    this.nw = new ManhattanQuadtree({ minX: b.minX, maxX: midX, minZ: b.minZ, maxZ: midZ }, this.capacity, this.maxDepth, nextDepth);
-    this.ne = new ManhattanQuadtree({ minX: midX, maxX: b.maxX, minZ: b.minZ, maxZ: midZ }, this.capacity, this.maxDepth, nextDepth);
-    this.sw = new ManhattanQuadtree({ minX: b.minX, maxX: midX, minZ: midZ, maxZ: b.maxZ }, this.capacity, this.maxDepth, nextDepth);
-    this.se = new ManhattanQuadtree({ minX: midX, maxX: b.maxX, minZ: midZ, maxZ: b.maxZ }, this.capacity, this.maxDepth, nextDepth);
+    this.nw = new Quadtree({ minX: b.minX, maxX: midX, minZ: b.minZ, maxZ: midZ }, this.capacity, this.maxDepth, nextDepth);
+    this.ne = new Quadtree({ minX: midX, maxX: b.maxX, minZ: b.minZ, maxZ: midZ }, this.capacity, this.maxDepth, nextDepth);
+    this.sw = new Quadtree({ minX: b.minX, maxX: midX, minZ: midZ, maxZ: b.maxZ }, this.capacity, this.maxDepth, nextDepth);
+    this.se = new Quadtree({ minX: midX, maxX: b.maxX, minZ: midZ, maxZ: b.maxZ }, this.capacity, this.maxDepth, nextDepth);
     this.divided = true;
 
     for (const item of this.items) {
@@ -303,7 +302,7 @@ function buildCityBlocks(scene) {
   }
 
   // Full-island Spatial Quadtree covering Harlem (~129th St) down to the Battery
-  const quadtree = new ManhattanQuadtree({
+  const quadtree = new Quadtree({
     minX: ISLAND_BOUNDS.minX - 50,
     maxX: ISLAND_BOUNDS.maxX + 50,
     minZ: ISLAND_BOUNDS.minZ - 50,
@@ -2630,4 +2629,4 @@ function buildCityBlocks(scene) {
   };
 }
 
-export { ManhattanQuadtree, buildCityBlocks };
+export { Quadtree, buildCityBlocks };

@@ -37,17 +37,18 @@ const groundCollider = { type: 'ground' };
 
 const CAR_DRIVE = {
   speed: 23.5, boostSpeed: 36, reverseSpeed: 10.5, acceleration: 14, boostAcceleration: 21,
-  rolling: 0.18, drag: 0.0012, brake: 9
+  rolling: 0.18, drag: 0.0012, coast: 0.6, brake: 9
 };
 const BICYCLE_DRIVE = {
   speed: 12.8, boostSpeed: 19, reverseSpeed: 4.5, acceleration: 9, boostAcceleration: 13.5,
-  rolling: 0.08, drag: 0.004, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
+  rolling: 0.08, drag: 0.004, coast: 0.2, brake: 7.5 // Backward input is scaled to 0.6, giving 4.5 m/s² braking.
 };
 
 function driveSpeed(speed, throttle, boost, dt, drive) {
   const braking = speed * throttle < 0;
   const magnitude = Math.abs(speed);
-  const deceleration = drive.rolling + (braking ? Math.abs(throttle) * drive.brake : 0);
+  // Extra resistance on release gives a stronger slowdown while coasting.
+  const deceleration = drive.rolling + (!throttle ? drive.coast : braking ? Math.abs(throttle) * drive.brake : 0);
   // Constant rolling resistance and quadratic air drag, without crossing zero or large-dt instability.
   const coasting = Math.max(0, magnitude - deceleration * dt) / (1 + drive.drag * magnitude * dt);
   if (!throttle || braking) return Math.sign(speed) * coasting;

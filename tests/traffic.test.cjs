@@ -4,7 +4,8 @@ const { join } = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync(join(__dirname, '../js/traffic.js'), 'utf8');
+const source = ['traffic.js', 'pedestrian-system.js']
+  .map((file) => readFileSync(join(__dirname, '../js', file), 'utf8')).join('\n');
 // Exercise the production lane query and player snapshot without creating the WebGPU scene.
 const laneQuery = source.match(/  function playerInLane\(lane, pl\) \{[\s\S]*?\n  \}/)?.[0];
 const playerSnapshot = source.match(/    const pl = entity[\s\S]*?\n    \} : null;/)?.[0];

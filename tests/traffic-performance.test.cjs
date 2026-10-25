@@ -4,7 +4,8 @@ const { join } = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const source = readFileSync(join(__dirname, '../js/traffic.js'), 'utf8');
+const source = ['traffic.js', 'pedestrian-system.js']
+  .map((file) => readFileSync(join(__dirname, '../js', file), 'utf8')).join('\n');
 function productionFunction(name, context) {
   const match = source.match(new RegExp(`  function ${name}\\([^]*?\\n  \\}`));
   assert.ok(match, `${name} is present`);

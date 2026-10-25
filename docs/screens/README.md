@@ -17,9 +17,20 @@ En las fases con Buenos Aires (`?city=ba`), las cámaras escénicas de NYC se re
 
 ## FPS
 
-Misma sesión, cámara `chase`, horario Golden Hour (el de arranque), HUD visible: leer `#hud-fps` una vez por segundo durante 30 s, empezando 25 s después de `load`. Anotar mediana, mínimo y máximo en el Registro del ROADMAP.
+El criterio de aceptación de cada fase es no empeorar respecto de la base de la Fase 0. Tanto la base como las mediciones de cada fase se toman **en el Chrome de Jero**. Las mediciones con Playwright son solo informativas.
 
-La cifra varía bastante entre corridas con el mismo código (en la Fase 0 dio 50–52 en dos corridas y 60 en otra). Para comparar fases, medir varias veces y, en lo posible, en el Chrome de Jero a pantalla completa.
+1. Abrir http://localhost:8080 en Chrome, con la ventana maximizada y siempre del mismo tamaño. Cerrar las otras pestañas pesadas.
+2. En la consola de DevTools: `localStorage.clear(); location.reload();`
+3. No tocar nada: cámara `chase`, Golden Hour (el horario de arranque), HUD visible, spawn por defecto.
+4. Esperar 25 s desde que termina la carga y pegar en la consola:
+
+   ```js
+   (async () => { const s = []; for (let i = 0; i < 30; i++) { await new Promise((r) => setTimeout(r, 1000)); s.push(+document.getElementById('hud-fps').textContent); } const o = [...s].sort((a, b) => a - b); console.log({ mediana: o[15], min: o[0], max: o[29], muestras: s.join(' ') }); })();
+   ```
+
+5. A los 30 s imprime mediana, mínimo y máximo. Repetirlo 3 veces y anotar en el Registro del ROADMAP las tres corridas, el tamaño de la ventana y si la Mac estaba enchufada.
+
+La cifra varía bastante entre corridas con el mismo código: en la Fase 0, con Playwright, dio medianas de 50, 52 y 60. Por eso se toman tres corridas.
 
 ## Script (Playwright, `browser_run_code`)
 

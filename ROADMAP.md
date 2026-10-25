@@ -24,7 +24,7 @@ Un juego de mundo abierto con la jugabilidad de los GTA clásicos (III, Vice Cit
 
 - No bajar la calidad visual. Nada de bajar la resolución, pixelar, pasar a low-poly ni sacar efectos. Se mantienen sin degradar el render WebGPU, los materiales TSL, la iluminación, el SSR, el post-processing y el ciclo día/noche.
 - Todo lo nuevo (landmarks, vehículos, marcadores, HUD, efectos) tiene que estar a la altura del original.
-- Rendimiento objetivo: 60 fps en Chrome con WebGPU en la MacBook Pro de Jero (Apple Silicon). En cada fase se mide y se compara con la fase anterior.
+- Rendimiento: el criterio de aceptación es no empeorar respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero. En cada fase se mide y se anota en el Registro. Los 60 fps en Chrome con WebGPU en la MacBook Pro de Jero (Apple Silicon) quedan como aspiración, no como criterio.
 
 ### Stack
 
@@ -120,7 +120,7 @@ Tamaño estimado: S = una sesión · M = varias sesiones · L = una fase larga, 
 
 - [ ] Pasan los tests existentes y los nuevos.
 - [ ] Probado en Chrome con WebGPU, en local.
-- [ ] Los fps no empeoran respecto de la fase anterior; anotar la cifra en el Registro.
+- [ ] Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero; anotar la cifra en el Registro.
 - [ ] Capturas en `docs/screens/fase-N/` desde los mismos puntos de cámara (protocolo en `docs/screens/README.md`).
 - [ ] ROADMAP actualizado (checkboxes y registro).
 - [ ] PR con la descripción de qué cambió y cómo probarlo.
@@ -240,7 +240,7 @@ Criterios de aceptación:
 - El Obelisco, la Plaza de Mayo y Puerto Madero se reconocen a simple vista.
 - El tráfico y los peatones circulan por el trazado nuevo.
 - No queda ningún resto visible de NYC.
-- Hay 60 fps, y las capturas comparadas con las de la Fase 0 muestran la misma calidad.
+- Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero, y las capturas comparadas con las de la Fase 0 muestran la misma calidad.
 - `?city=ba` pasa a ser el valor por defecto.
 
 ### Fase 3: Robar autos y moverse como en GTA · M
@@ -308,7 +308,7 @@ Criterios de aceptación:
 - Los tests unitarios de `wanted.js` cubren subir, bajar, decaer y el taller.
 - Una persecución de 3 estrellas por el centro es jugable y se puede escapar.
 - El arresto y la muerte funcionan y el juego continúa.
-- Hay 60 fps con 5 estrellas activas.
+- Con 5 estrellas activas, los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero.
 
 ### Fase 5: Misiones · M–L
 
@@ -377,7 +377,7 @@ Criterios de aceptación:
 
 - El trazado coincide con el real, incluidos los sentidos de circulación.
 - Las 5 misiones y los minijuegos siguen funcionando sin cambios en sus definiciones.
-- Hay 60 fps.
+- Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero.
 - La atribución de OSM aparece en el juego.
 
 ### Fase 8: Backlog (después del primer gran hito; priorizar con Jero)
@@ -415,14 +415,16 @@ Criterios de aceptación:
 | 2026-10-25 | 0 | Fork en `BabyKuramaDev/proyecto-porteno`, clonado en `/Applications/MAMP/htdocs/gta-caba`, remote `upstream` → `mrdoob/slop-newyork`. | Nombre provisorio sin "GTA". |
 | 2026-10-25 | 0 | three.js fijado a `gh/mrdoob/three.js@35ba271dea54fcbbcd86b794ce153a54d5b5f17e` (rama dev, 2026-10-25 08:57 UTC), no a npm `three@0.186.1`. | Con 0.186.1 los shaders WGSL fallan (`PMREM.Background`: "structures must have at least one member") al cambiar la hora y la página se cuelga. El sha elegido sirve archivos idénticos byte a byte a lo que entregaba `@dev` (snapshot cacheado de jsDelivr) cuando se sacaron las capturas de referencia. Actualizar solo en un PR propio. |
 | 2026-10-25 | 0 | Capturas de referencia: JPEG q90, 1600×900, DPR 1, sin HUD, 5 cámaras × 3 horarios, con Playwright (Chrome 156, WebGPU/Metal). | JPEG para no inflar el repo (≈4,4 MB en total). Protocolo reproducible en `docs/screens/README.md`. |
-| 2026-10-25 | 0 | `tests/overpass.test.mjs` falla en esta Mac (7 tests) porque el node de Herd está en una ruta con espacios (`Application Support`) y el test usa `process.execPath` como shebang. Con un node en ruta sin espacios pasan 7/7. No se modifica el test de upstream. | Problema de entorno, no del código. Para correr la suite completa: usar un node fuera de una ruta con espacios (p. ej. un symlink). |
-| 2026-10-25 | 0 | Pendiente para la Fase 2.6: el `<meta name="description">` de `index.html` dice "GTA-style". | Choca con la premisa legal (nada de "GTA"). En la Fase 0 se deja igual al original. |
+| 2026-10-25 | 0 | `tests/overpass.test.mjs` falla en esta Mac (7 tests) porque el node de Herd está en una ruta con espacios (`Application Support`) y el test usa `process.execPath` como shebang. Con un node en ruta sin espacios pasan 7/7. No se modifica el test de upstream. | Problema de entorno, no del código. Para correr la suite completa hay que usar un node cuya ruta real no tenga espacios. Un symlink no alcanza (node resuelve la ruta real en `process.execPath`, verificado), y el node 18 de `/usr/local/bin` falla en otros 4 tests. |
+| 2026-10-25 | 0 | El criterio de rendimiento pasa a ser no empeorar respecto de la base de la Fase 0 (mediana, mínimo y máximo, protocolo de `docs/screens/README.md`, en el Chrome de Jero). Los 60 fps quedan como aspiración. | Pedido de Jero: el original ya mide entre 50 y 60 fps según la corrida, así que 60 fijos no es un criterio alcanzable ni estable. |
+| 2026-10-25 | 0 | `<meta name="description">` de `index.html` reescrito con una descripción propia, sin "GTA". | Premisa legal. Es el único cambio al index además del pin de three. |
 
-FPS por fase (misma cámara y horario):
+FPS por fase (protocolo de `docs/screens/README.md`; mediana / mínimo / máximo):
 
-| Fase | FPS | Notas |
-|---|---|---|
-| 0 (original) | 50–60 | Playwright + Chrome 156 (WebGPU/Metal), 1600×900, DPR 1, cámara chase, Golden Hour, spawn por defecto, 30 muestras de 1 s tras 25 s de carga. Mismo código de three medido tres veces: 50–52, 50–54 y 60 (tope de vsync). La variación es del entorno; falta la medición de Jero en su Chrome a pantalla completa (DPR 2). |
+| Fase | Dónde | Mediana | Mín | Máx | Notas |
+|---|---|---|---|---|---|
+| 0 (original) — **base** | Chrome de Jero | pendiente | pendiente | pendiente | Es la base contra la que se comparan todas las fases. La mide Jero. |
+| 0 (original) | Playwright + Chrome 156 (WebGPU/Metal), 1600×900, DPR 1 | 50–60 | 48–50 | 52–62 | Referencia informativa, no es la base. Tres corridas con el mismo código de three: 50/48/52, 52/50/54 y 60/50/62. La variación es del entorno. |
 
 ## Anexo A: Calles del centro (referencia para el mapa aproximado)
 

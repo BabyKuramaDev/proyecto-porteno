@@ -4,7 +4,8 @@ Juego de mundo abierto tipo GTA ambientado en Buenos Aires (Centro, San Telmo y 
 
 ## Reglas
 
-- **No bajar la calidad gráfica.** El render WebGPU, los materiales TSL, la iluminación, el SSR, el post-processing y el ciclo día/noche se mantienen. Todo lo nuevo va a la misma altura. El objetivo es 60 fps en Chrome (WebGPU) en una MacBook Pro con Apple Silicon.
+- **No bajar la calidad gráfica.** El render WebGPU, los materiales TSL, la iluminación, el SSR, el post-processing y el ciclo día/noche se mantienen. Todo lo nuevo va a la misma altura.
+- **Rendimiento:** el criterio es no empeorar respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero (MacBook Pro, Apple Silicon, WebGPU). Los 60 fps son una aspiración, no un criterio de aceptación.
 - **Sin build step.** Vanilla ES modules y sitio estático; nada de bundler, framework ni TypeScript. three.js va con versión fija en el importmap.
 - **Legal:**
   - conservar `LICENSE` (MIT, Mr.doob) y la atribución de OpenStreetMap;
@@ -19,7 +20,10 @@ Juego de mundo abierto tipo GTA ambientado en Buenos Aires (Centro, San Telmo y 
 ## Comandos
 
 - Servir: `python3 -m http.server 8080` y abrir http://localhost:8080 (en Chrome, para tener WebGPU).
-- Tests: `node --test tests/*.test.cjs tests/*.test.mjs`
+- Tests: `node --test tests/*.test.cjs tests/*.test.mjs`. El criterio es **113/113** en verde.
+  - Hay que correrlos con un node cuya ruta real no tenga espacios. El node de Herd (`~/Library/Application Support/Herd/...`) rompe los 7 tests de `tests/overpass.test.mjs`, que usan `process.execPath` como shebang. Un symlink no lo arregla, porque node resuelve la ruta real.
+  - Tampoco sirve el node 18 de `/usr/local/bin`: es demasiado viejo y fallan otros 4 tests.
+  - No se modifican los tests de upstream para esquivar esto.
 - Flags: `?debug=1` (modo libre y overlay de fps) y `?city=nyc|ba`. Se agregan en las Fases 1 y 3.
 
 ## Cómo trabajar

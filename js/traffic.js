@@ -310,7 +310,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // =========================================================================
   // 3. PEDESTRIAN SYSTEM
   // =========================================================================
-  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0,
+  const player = { active: false, entity: null, x: 0, z: 0, vx: 0, vz: 0, fx: 0, fz: 1,
     halfW: 0.86, halfL: 2.18, push: 0.5 };
   const nearEdges = [];
   const nearSignals = [];
@@ -722,7 +722,11 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     for (const p of n.walkers) {
       if (p.side !== side || (onIt && p.waiting)) continue;
       const toGo = (coord - p.coord) * p.dir; // metres p still has to walk to get there
-      if (p.waiting || ((toGo + 2.6) / p.speed > t0 && (toGo - 2.6) / p.speed < t1)) return true;
+      const avoiding = clock < p.avoidUntil;
+      // Runners may enter a lane sooner, then slow or stop before clearing it.
+      const fast = Math.max(p.speed, p.v, avoiding ? p.avoidSpeed : 0);
+      const slow = Math.max(0.1, avoiding ? Math.min(p.speed, p.v, p.avoidSpeed) : p.speed);
+      if (p.waiting || ((toGo + 2.6) / slow > t0 && (toGo - 2.6) / fast < t1)) return true;
     }
     return false;
   }
@@ -1666,8 +1670,10 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
       player.entity = playerEntity;
       player.x = playerEntity.position.x;
       player.z = playerEntity.position.z;
-      player.vx = Math.sin(heading) * speed + (playerEntity.vx || 0);
-      player.vz = Math.cos(heading) * speed + (playerEntity.vz || 0);
+      player.fx = Math.sin(heading);
+      player.fz = Math.cos(heading);
+      player.vx = player.fx * speed + (playerEntity.vx || 0);
+      player.vz = player.fz * speed + (playerEntity.vz || 0);
     }
     player.halfW = activeMode === 'cyclist' ? 0.35 : activeMode === 'person' ? 0.32 : 0.86;
     player.halfL = activeMode === 'cyclist' ? 0.85 : activeMode === 'person' ? 0.32 : 2.18;
@@ -1755,7 +1761,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
     updateTrafficLights();
 
     // 2. Pedestrians
-    pedestrianSystem.update(dt, elapsed, focusX, focusZ, jump, hasView);
+    pedestrianSystem.update(dt, elapsed, focusX, focusZ, jump, hasView, activeMode);
 
     // 3. Collision sparks, including the player's own impacts against buildings
     if (playerEntity && playerEntity.lastCollisionSpark) {

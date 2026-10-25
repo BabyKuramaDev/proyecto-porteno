@@ -17,7 +17,7 @@ En las fases con Buenos Aires (`?city=ba`), las cámaras escénicas de NYC se re
 
 ## FPS
 
-El criterio de aceptación de cada fase es no empeorar respecto de la base de la Fase 0. Tanto la base como las mediciones de cada fase se toman **en el Chrome de Jero**. Las mediciones con Playwright son solo informativas.
+El criterio de aceptación de cada fase es no empeorar respecto de la base de la Fase 0, con margen: la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base. Por ejemplo, si las medianas de la base son 58, 60 y 55, el piso es 52. Tanto la base como las mediciones de cada fase se toman **en el Chrome de Jero**. Las mediciones con Playwright son solo informativas.
 
 1. Abrir http://localhost:8080 en Chrome, con la ventana maximizada y siempre del mismo tamaño. Cerrar las otras pestañas pesadas.
 2. En la consola de DevTools: `localStorage.clear(); location.reload();`
@@ -30,7 +30,7 @@ El criterio de aceptación de cada fase es no empeorar respecto de la base de la
 
 5. A los 30 s imprime mediana, mínimo y máximo. Repetirlo 3 veces y anotar en el Registro del ROADMAP las tres corridas, el tamaño de la ventana y si la Mac estaba enchufada.
 
-La cifra varía bastante entre corridas con el mismo código: en la Fase 0, con Playwright, dio medianas de 50, 52 y 60. Por eso se toman tres corridas.
+La cifra varía bastante entre corridas con el mismo código: en la Fase 0, con Playwright, dio medianas de 50, 52 y 60. Por eso se toman tres corridas y se compara peor contra peor, con 3 fps de margen.
 
 ## Script (Playwright, `browser_run_code`)
 

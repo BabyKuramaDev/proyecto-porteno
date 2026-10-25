@@ -24,7 +24,7 @@ Un juego de mundo abierto con la jugabilidad de los GTA clásicos (III, Vice Cit
 
 - No bajar la calidad visual. Nada de bajar la resolución, pixelar, pasar a low-poly ni sacar efectos. Se mantienen sin degradar el render WebGPU, los materiales TSL, la iluminación, el SSR, el post-processing y el ciclo día/noche.
 - Todo lo nuevo (landmarks, vehículos, marcadores, HUD, efectos) tiene que estar a la altura del original.
-- Rendimiento: el criterio de aceptación es no empeorar respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero. En cada fase se mide y se anota en el Registro. Los 60 fps en Chrome con WebGPU en la MacBook Pro de Jero (Apple Silicon) quedan como aspiración, no como criterio.
+- Rendimiento: el criterio de aceptación es no empeorar respecto de la base de la Fase 0, con un margen por el ruido entre corridas (~10 fps): la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base de la Fase 0 (protocolo de `docs/screens/README.md`, en el Chrome de Jero). En cada fase se hacen 3 corridas y se anotan mediana, mínimo y máximo de cada una en el Registro. Los 60 fps en Chrome con WebGPU en la MacBook Pro de Jero (Apple Silicon) quedan como aspiración, no como criterio.
 
 ### Stack
 
@@ -120,7 +120,7 @@ Tamaño estimado: S = una sesión · M = varias sesiones · L = una fase larga, 
 
 - [ ] Pasan los tests existentes y los nuevos.
 - [ ] Probado en Chrome con WebGPU, en local.
-- [ ] Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero; anotar la cifra en el Registro.
+- [ ] Fps: la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base de la Fase 0 (protocolo de `docs/screens/README.md`, en el Chrome de Jero). Anotar las 3 corridas en el Registro.
 - [ ] Capturas en `docs/screens/fase-N/` desde los mismos puntos de cámara (protocolo en `docs/screens/README.md`).
 - [ ] ROADMAP actualizado (checkboxes y registro).
 - [ ] PR con la descripción de qué cambió y cómo probarlo.
@@ -240,7 +240,8 @@ Criterios de aceptación:
 - El Obelisco, la Plaza de Mayo y Puerto Madero se reconocen a simple vista.
 - El tráfico y los peatones circulan por el trazado nuevo.
 - No queda ningún resto visible de NYC.
-- Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero, y las capturas comparadas con las de la Fase 0 muestran la misma calidad.
+- Fps: la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base de la Fase 0 (protocolo de `docs/screens/README.md`, en el Chrome de Jero).
+- Las capturas comparadas con las de la Fase 0 muestran la misma calidad.
 - `?city=ba` pasa a ser el valor por defecto.
 
 ### Fase 3: Robar autos y moverse como en GTA · M
@@ -308,7 +309,7 @@ Criterios de aceptación:
 - Los tests unitarios de `wanted.js` cubren subir, bajar, decaer y el taller.
 - Una persecución de 3 estrellas por el centro es jugable y se puede escapar.
 - El arresto y la muerte funcionan y el juego continúa.
-- Con 5 estrellas activas, los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero.
+- Con 5 estrellas activas, la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base de la Fase 0 (protocolo de `docs/screens/README.md`, en el Chrome de Jero).
 
 ### Fase 5: Misiones · M–L
 
@@ -377,7 +378,7 @@ Criterios de aceptación:
 
 - El trazado coincide con el real, incluidos los sentidos de circulación.
 - Las 5 misiones y los minijuegos siguen funcionando sin cambios en sus definiciones.
-- Los fps no empeoran respecto de la base de la Fase 0, medida con el protocolo de `docs/screens/README.md` (mediana, mínimo y máximo) en el Chrome de Jero.
+- Fps: la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base de la Fase 0 (protocolo de `docs/screens/README.md`, en el Chrome de Jero).
 - La atribución de OSM aparece en el juego.
 
 ### Fase 8: Backlog (después del primer gran hito; priorizar con Jero)
@@ -417,13 +418,17 @@ Criterios de aceptación:
 | 2026-10-25 | 0 | Capturas de referencia: JPEG q90, 1600×900, DPR 1, sin HUD, 5 cámaras × 3 horarios, con Playwright (Chrome 156, WebGPU/Metal). | JPEG para no inflar el repo (≈4,4 MB en total). Protocolo reproducible en `docs/screens/README.md`. |
 | 2026-10-25 | 0 | `tests/overpass.test.mjs` falla en esta Mac (7 tests) porque el node de Herd está en una ruta con espacios (`Application Support`) y el test usa `process.execPath` como shebang. Con un node en ruta sin espacios pasan 7/7. No se modifica el test de upstream. | Problema de entorno, no del código. Para correr la suite completa hay que usar un node cuya ruta real no tenga espacios. Un symlink no alcanza (node resuelve la ruta real en `process.execPath`, verificado), y el node 18 de `/usr/local/bin` falla en otros 4 tests. |
 | 2026-10-25 | 0 | El criterio de rendimiento pasa a ser no empeorar respecto de la base de la Fase 0 (mediana, mínimo y máximo, protocolo de `docs/screens/README.md`, en el Chrome de Jero). Los 60 fps quedan como aspiración. | Pedido de Jero: el original ya mide entre 50 y 60 fps según la corrida, así que 60 fijos no es un criterio alcanzable ni estable. |
+| 2026-10-25 | 0 | Margen del criterio de fps: la peor mediana de las 3 corridas de la fase no puede quedar más de 3 fps por debajo de la peor mediana de las 3 corridas de la base. | Pedido de Jero: entre corridas con el mismo código hay ~10 fps de ruido, así que "no empeorar" sin margen daría falsos rechazos. Comparar peor contra peor reduce el efecto de una corrida con suerte. |
+| 2026-10-25 | 0 | Tests con `node@24` de Homebrew (24.22.1, la misma versión que Herd): `/opt/homebrew/opt/node@24/bin/node --test tests/*.test.cjs tests/*.test.mjs` → 113/113. | Su ruta real (`/opt/homebrew/Cellar/node@24/...`) no tiene espacios. Es keg-only, así que no reemplaza al node de Herd en el PATH. |
 | 2026-10-25 | 0 | `<meta name="description">` de `index.html` reescrito con una descripción propia, sin "GTA". | Premisa legal. Es el único cambio al index además del pin de three. |
 
 FPS por fase (protocolo de `docs/screens/README.md`; mediana / mínimo / máximo):
 
 | Fase | Dónde | Mediana | Mín | Máx | Notas |
 |---|---|---|---|---|---|
-| 0 (original) — **base** | Chrome de Jero | pendiente | pendiente | pendiente | Es la base contra la que se comparan todas las fases. La mide Jero. |
+| 0 (original) — **base**, corrida 1 | Chrome de Jero | pendiente | pendiente | pendiente | La base contra la que se comparan todas las fases. La mide Jero. |
+| 0 (original) — **base**, corrida 2 | Chrome de Jero | pendiente | pendiente | pendiente | |
+| 0 (original) — **base**, corrida 3 | Chrome de Jero | pendiente | pendiente | pendiente | **Piso para las fases siguientes = peor mediana de las 3 corridas − 3 fps:** pendiente. |
 | 0 (original) | Playwright + Chrome 156 (WebGPU/Metal), 1600×900, DPR 1 | 50–60 | 48–50 | 52–62 | Referencia informativa, no es la base. Tres corridas con el mismo código de three: 50/48/52, 52/50/54 y 60/50/62. La variación es del entorno. |
 
 ## Anexo A: Calles del centro (referencia para el mapa aproximado)

@@ -93,7 +93,7 @@ async function initApp() {
     ...cityGrid.footprints,
     ...streetDetails.footprints,
     ...allColliders.filter((c) => !c.obb && (c.minY ?? 0) < 3.5)
-  ]);
+  ], streetDetails.signalIntersections);
   markInit('traffic');
   const highwayTraffic = createHighwayTraffic(scene, cityGrid.highwayLanes);
   buildRoadPaint(scene, trafficSystem.network);

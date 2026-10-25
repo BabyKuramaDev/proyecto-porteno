@@ -70,7 +70,7 @@ function createBusDestinationTexture() {
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-function createTrafficSystem(scene, sidewalks, obstacles) {
+function createTrafficSystem(scene, sidewalks, obstacles, signalIntersections) {
   const group = new THREE.Group();
   group.name = 'ManhattanTrafficAndPedestrians';
   let collisionListener = null;
@@ -98,7 +98,7 @@ function createTrafficSystem(scene, sidewalks, obstacles) {
   // =========================================================================
   // 0. ROAD NETWORK
   // =========================================================================
-  const network = buildRoadNetwork(sidewalks, obstacles);
+  const network = buildRoadNetwork(sidewalks, obstacles, signalIntersections);
   const { nodes, edges, connector, curvePoint } = network;
 
   // Sides of an intersection (road-network.js step 9): a grid intersection's are 0 east, 1 west, 2 south, 3 north;

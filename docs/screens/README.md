@@ -25,10 +25,10 @@ El criterio de aceptación de cada fase es no empeorar respecto de la base de la
 4. Esperar 25 s desde que termina la carga y pegar en la consola:
 
    ```js
-   (async () => { const s = []; for (let i = 0; i < 30; i++) { await new Promise((r) => setTimeout(r, 1000)); s.push(+document.getElementById('hud-fps').textContent); } const o = [...s].sort((a, b) => a - b); console.log({ mediana: o[15], min: o[0], max: o[29], muestras: s.join(' ') }); })();
+   (async () => { const s = []; for (let i = 0; i < 30; i++) { await new Promise((r) => setTimeout(r, 1000)); s.push(+document.getElementById('hud-fps').textContent); } const o = [...s].sort((a, b) => a - b); const c = document.querySelector('canvas'); const a = await navigator.gpu?.requestAdapter(); const b = await navigator.getBattery?.(); console.log(JSON.stringify({ mediana: o[15], min: o[0], max: o[29], muestras: s.join(' '), ventana: innerWidth + 'x' + innerHeight, canvas: c.width + 'x' + c.height, dpr: devicePixelRatio, webgpu: a ? a.info.vendor + '/' + a.info.architecture : 'NO (WebGL2)', enchufada: b ? b.charging : '?' })); })();
    ```
 
-5. A los 30 s imprime mediana, mínimo y máximo. Repetirlo 3 veces y anotar en el Registro del ROADMAP las tres corridas, el tamaño de la ventana y si la Mac estaba enchufada.
+5. A los 30 s imprime en una sola línea mediana, mínimo y máximo, junto con las condiciones de la corrida: tamaño de la ventana y del canvas, si hay WebGPU y si la Mac estaba enchufada. Repetirlo 3 veces y anotar las tres líneas en el Registro del ROADMAP.
 
 La cifra varía bastante entre corridas con el mismo código: en la Fase 0, con Playwright, dio medianas de 50, 52 y 60. Por eso se toman tres corridas y se compara peor contra peor, con 3 fps de margen.
 

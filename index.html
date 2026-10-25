@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Slop New York</title>
   <link rel="icon" href="data:," />
-  <meta name="description" content="Photorealistic GTA-style 3D Slop New York simulation built with Three.js WebGPURenderer and TSL shaders featuring complete Manhattan street map (125th St to Battery Park), third-person navigation (Person, Car, Cyclist, Helicopter), and 11 cinematic cameras at 60 FPS." />
+  <meta name="description" content="Proyecto Porteño (nombre provisorio): juego de mundo abierto en el navegador ambientado en el centro de Buenos Aires (Microcentro, San Telmo y Puerto Madero). Hecho con three.js, WebGPURenderer y TSL sobre Slop New York de Mr.doob." />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <!-- three.js dev branch (builds committed to mrdoob/three.js@dev, served by jsDelivr) -->
+  <!-- three.js pinned to a mrdoob/three.js dev commit (r186 npm lacks WebGPU fixes this project needs); update only on purpose, in its own PR -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.webgpu.js",
-        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/build/three.tsl.js",
-        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@35ba271dea54fcbbcd86b794ce153a54d5b5f17e/build/three.webgpu.js",
+        "three/webgpu": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@35ba271dea54fcbbcd86b794ce153a54d5b5f17e/build/three.webgpu.js",
+        "three/tsl": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@35ba271dea54fcbbcd86b794ce153a54d5b5f17e/build/three.tsl.js",
+        "three/addons/": "https://cdn.jsdelivr.net/gh/mrdoob/three.js@35ba271dea54fcbbcd86b794ce153a54d5b5f17e/examples/jsm/"
       }
     }
   </script>
